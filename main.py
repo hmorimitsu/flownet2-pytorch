@@ -211,8 +211,12 @@ if __name__ == '__main__':
             if not args.inference:
                 args.start_epoch = checkpoint['epoch']
 
-            if args.model == 'PWCDCNet':
-                model_and_loss.module.model.load_state_dict(checkpoint)
+            if args.model == 'PWCNet' or args.model == 'PWCDCNet':
+                pretrained_dict = checkpoint
+                model_dict = model_and_loss.module.model.state_dict()
+                pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+                model_dict.update(pretrained_dict)
+                model_and_loss.module.model.load_state_dict(pretrained_dict)
                 block.log("Loaded checkpoint '{}'".format(args.resume))
             else:
                 best_err = checkpoint['best_EPE']
