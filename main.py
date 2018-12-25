@@ -267,7 +267,7 @@ if __name__ == '__main__':
 
             optimizer.zero_grad() if not is_validate else None
             losses = model(data[0], target[0])
-            losses = [torch.mean(loss_value) for loss_value in losses] 
+            losses = [torch.mean(loss_value) for loss_value in losses]
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.data
             loss_values = [v.data for v in losses]
@@ -275,7 +275,7 @@ if __name__ == '__main__':
             # gather loss_labels, direct return leads to recursion limit error as it looks for variables to gather'
             loss_labels = list(model.module.loss.loss_labels)
 
-            assert not np.isnan(total_loss)
+            assert not np.isnan(total_loss.item())
 
             if not is_validate and args.fp16:
                 loss_val.backward()
