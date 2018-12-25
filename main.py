@@ -25,12 +25,12 @@ if __name__ == '__main__':
     parser.add_argument('--start_epoch', type=int, default=1)
     parser.add_argument('--total_epochs', type=int, default=10000)
     parser.add_argument('--batch_size', '-b', type=int, default=8, help="Batch size")
-    parser.add_argument('--train_n_batches', type=int, default = -1, help='Number of min-batches per epoch. If < 0, it will be determined by training_dataloader')
-    parser.add_argument('--crop_size', type=int, nargs='+', default = [256, 256], help="Spatial dimension to crop training samples for training")
+    parser.add_argument('--train_n_batches', type=int, default=-1, help='Number of min-batches per epoch. If < 0, it will be determined by training_dataloader')
+    parser.add_argument('--crop_size', type=int, nargs='+', default=[256, 256], help="Spatial dimension to crop training samples for training")
     parser.add_argument('--gradient_clip', type=float, default=None)
     parser.add_argument('--schedule_lr_frequency', type=int, default=0, help='in number of iterations (0 for no schedule)')
     parser.add_argument('--schedule_lr_fraction', type=float, default=10)
-    parser.add_argument("--rgb_max", type=float, default = 255.)
+    parser.add_argument("--rgb_max", type=float, default=255.)
 
     parser.add_argument('--number_workers', '-nw', '--num_workers', type=int, default=8)
     parser.add_argument('--number_gpus', '-ng', type=int, default=-1, help='number of GPUs to use')
@@ -368,8 +368,8 @@ if __name__ == '__main__':
 
             losses = [torch.mean(loss_value) for loss_value in losses] 
             loss_val = losses[0] # Collect first loss for weight update
-            total_loss += loss_val.data[0]
-            loss_values = [v.data[0] for v in losses]
+            total_loss += loss_val.data
+            loss_values = [v.data for v in losses]
 
             # gather loss_labels, direct return leads to recursion limit error as it looks for variables to gather'
             loss_labels = list(model.module.loss.loss_labels)
