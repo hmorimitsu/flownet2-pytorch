@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from torch.nn import init
-from torch.autograd import Variable
 
 import math
 import numpy as np
@@ -628,7 +627,7 @@ class PWCDCNet(nn.Module):
 
         if x.is_cuda:
             grid = grid.cuda()
-        vgrid = Variable(grid) + flo
+        vgrid = torch.autograd.Variable(grid) + flo
 
         # scale grid to [-1,1] 
         vgrid[:,0,:,:] = 2.0*vgrid[:,0,:,:]/max(W-1,1)-1.0
