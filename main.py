@@ -210,9 +210,14 @@ if __name__ == '__main__':
             checkpoint = torch.load(args.resume)
             if not args.inference:
                 args.start_epoch = checkpoint['epoch']
-            best_err = checkpoint['best_EPE']
-            model_and_loss.module.model.load_state_dict(checkpoint['state_dict'])
-            block.log("Loaded checkpoint '{}' (at epoch {})".format(args.resume, checkpoint['epoch']))
+
+            if args.model == 'PWCDCNet':
+                model_and_loss.module.model.load_state_dict(checkpoint)
+                block.log("Loaded checkpoint '{}'".format(args.resume))
+            else:
+                best_err = checkpoint['best_EPE']
+                model_and_loss.module.model.load_state_dict(checkpoint['state_dict'])
+                block.log("Loaded checkpoint '{}' (at epoch {})".format(args.resume, checkpoint['epoch']))
 
         elif args.resume and args.inference:
             block.log("No checkpoint found at '{}'".format(args.resume))
