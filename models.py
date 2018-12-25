@@ -630,12 +630,15 @@ class PWCDCNet(nn.Module):
         vgrid = torch.autograd.Variable(grid) + flo
 
         # scale grid to [-1,1] 
-        vgrid[:,0,:,:] = 2.0*vgrid[:,0,:,:]/max(W-1,1)-1.0
-        vgrid[:,1,:,:] = 2.0*vgrid[:,1,:,:]/max(H-1,1)-1.0
+        vgrid = torch.stack([
+            2.0*vgrid[:,0,:,:]/max(W-1,1)-1.0,
+            2.0*vgrid[:,1,:,:]/max(H-1,1)-1.0], dim=1)
 
         vgrid = vgrid.permute(0,2,3,1)        
         output = nn.functional.grid_sample(x, vgrid)
-        mask = torch.autograd.Variable(torch.ones(x.size())).cuda()
+        mask = torch.autograd.Variable(torch.ones(x.size()))
+        if x.is_cuda:
+            mask = mask.cuda()
         mask = nn.functional.grid_sample(mask, vgrid)
 
         # if W==128:
@@ -654,9 +657,6 @@ class PWCDCNet(nn.Module):
         x = (inputs - rgb_mean) / self.rgb_max
         im1 = x[:,:,0,:,:]
         im2 = x[:,:,1,:,:]
-        # x = torch.cat((x1,x2), dim = 1)
-        # im1 = x[:,:3,:,:]
-        # im2 = x[:,3:,:,:]
         
         c11 = self.conv1b(self.conv1aa(self.conv1a(im1)))
         c21 = self.conv1b(self.conv1aa(self.conv1a(im2)))
