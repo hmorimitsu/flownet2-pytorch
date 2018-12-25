@@ -1,5 +1,6 @@
 #include <ATen/ATen.h>
 #include <ATen/Context.h>
+#include <ATen/cuda/CUDAContext.h>
 
 #include "channelnorm_kernel.cuh"
 
@@ -109,7 +110,7 @@ void channelnorm_kernel_forward(
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(input1.type(), "channelnorm_forward", ([&] {
 
-      kernel_channelnorm_update_output<scalar_t><<< (n + CUDA_NUM_THREADS - 1)/CUDA_NUM_THREADS, CUDA_NUM_THREADS, 0, at::globalContext().getCurrentCUDAStream() >>>(
+      kernel_channelnorm_update_output<scalar_t><<< (n + CUDA_NUM_THREADS - 1)/CUDA_NUM_THREADS, CUDA_NUM_THREADS, 0, at::cuda::getCurrentCUDAStream() >>>(
           n,
           input1.data<scalar_t>(), 
           input1_size,
@@ -149,7 +150,7 @@ void channelnorm_kernel_backward(
 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(input1.type(), "channelnorm_backward_input1", ([&] {
 
-      kernel_channelnorm_backward_input1<scalar_t><<< (n + CUDA_NUM_THREADS - 1)/CUDA_NUM_THREADS, CUDA_NUM_THREADS, 0, at::globalContext().getCurrentCUDAStream() >>>(
+      kernel_channelnorm_backward_input1<scalar_t><<< (n + CUDA_NUM_THREADS - 1)/CUDA_NUM_THREADS, CUDA_NUM_THREADS, 0, at::cuda::getCurrentCUDAStream() >>>(
           n, 
           input1.data<scalar_t>(),
           input1_size,
