@@ -33,6 +33,10 @@ A batchnorm version for each network is also available.
  - **FlowNet2SD**
  - **FlowNet2**
 
+### Additional architectures added in this repo
+- **PWCNet**
+- **PWCDCNet**
+
 ## Custom layers
 
 `FlowNet2` or `FlowNet2C*` achitectures rely on custom layers `Resample2d` or `Correlation`. <br />
@@ -75,6 +79,9 @@ We've included caffe pre-trained models. Should you use these pre-trained weight
 * [FlowNet2-CSS-ft-sd](https://drive.google.com/file/d/1R5xafCIzJCXc8ia4TGfC65irmTNiMg6u/view?usp=sharing)[445MB]
 * [FlowNet2-S](https://drive.google.com/file/d/1V61dZjFomwlynwlYklJHC-TLfdFom3Lg/view?usp=sharing)[148MB]
 * [FlowNet2-SD](https://drive.google.com/file/d/1QW03eyYG_vD-dT-Mx4wopYvtPu_msTKn/view?usp=sharing)[173MB]
+
+### PWC-Net model
+* PWC-DC-Net model can be downloaded from [https://github.com/NVlabs/PWC-Net/tree/master/PyTorch](https://github.com/NVlabs/PWC-Net/tree/master/PyTorch). Be sure to adhere to the [PWC-Net license](https://github.com/NVlabs/PWC-Net/blob/master/PyTorch/LICENSE.md).
     
 ## Inference
     # Example on MPISintel Clean   
