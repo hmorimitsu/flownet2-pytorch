@@ -17,6 +17,7 @@ from os.path import *
 import models, losses, datasets
 from utils import flow_utils, tools
 from utils.flow2image import f2i
+from utils.FlowNetPytorch import flow_transforms
 
 # fp32 copy of parameters for update
 global param_copy
@@ -39,6 +40,8 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--name', default='run', type=str, help='a name to append to the save directory')
     parser.add_argument('--save', '-s', default='./work', type=str, help='directory for saving')
+
+    parser.add_argument('--train_transforms', action='store_true', help='use image augmentation during training')
 
     parser.add_argument('--validation_frequency', type=int, default=5, help='validate every n epochs')
     parser.add_argument('--validation_n_batches', type=int, default=-1)
@@ -144,6 +147,15 @@ if __name__ == '__main__':
                    'drop_last' : True} if args.cuda else {}
         inf_gpuargs = gpuargs.copy()
         inf_gpuargs['num_workers'] = args.number_workers
+
+        if args.train_transforms:
+            args.training_dataset_transforms = flow_transforms.Compose([
+                flow_transforms.RandomTranslate(10),
+                flow_transforms.RandomRotate(10,5),
+                flow_transforms.RandomCrop((320,448)),
+                flow_transforms.RandomVerticalFlip(),
+                flow_transforms.RandomHorizontalFlip()
+            ])
 
         if exists(args.training_dataset_root):
             train_dataset = args.training_dataset_class(args, True, **tools.kwargs_from_args(args, 'training_dataset'))

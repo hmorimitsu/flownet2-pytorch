@@ -10,6 +10,9 @@ Code modified from flownet2-pytorch [https://github.com/NVIDIA/flownet2-pytorch]
 - Show images of groundtruth and estimated optical flows in tensorboard.
   - Flow to image conversion is done using the code in [https://github.com/georgegach/flow2image](https://github.com/georgegach/flow2image).
 - For more stable visualization, statistics are reported as the mean value over an epoch, rather than the value at the current iteration.
+- Replaced LR scheduler by torch.optim.lr_scheduler.
+- Included training augmentation.
+  - The augmentation code come from [https://github.com/ClementPinard/FlowNetPytorch](https://github.com/ClementPinard/FlowNetPytorch).
 
 
 # flownet2-pytorch 
