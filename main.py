@@ -208,8 +208,6 @@ if __name__ == '__main__':
         if args.resume and os.path.isfile(args.resume):
             block.log("Loading checkpoint '{}'".format(args.resume))
             checkpoint = torch.load(args.resume)
-            if not args.inference:
-                args.start_epoch = checkpoint['epoch']
 
             if args.model == 'PWCNet' or args.model == 'PWCDCNet':
                 pretrained_dict = checkpoint
@@ -219,6 +217,8 @@ if __name__ == '__main__':
                 model_and_loss.module.model.load_state_dict(pretrained_dict)
                 block.log("Loaded checkpoint '{}'".format(args.resume))
             else:
+                if not args.inference:
+                    args.start_epoch = checkpoint['epoch']
                 best_err = checkpoint['best_EPE']
                 model_and_loss.module.model.load_state_dict(checkpoint['state_dict'])
                 block.log("Loaded checkpoint '{}' (at epoch {})".format(args.resume, checkpoint['epoch']))
