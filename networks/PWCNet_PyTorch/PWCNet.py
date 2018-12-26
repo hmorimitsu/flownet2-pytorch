@@ -87,8 +87,7 @@ class PWCNet(nn.Module):
         self.conv2_2 = self.conv(od+dd[1],96,  kernel_size=3, stride=1)
         self.conv2_3 = self.conv(od+dd[2],64,  kernel_size=3, stride=1)
         self.conv2_4 = self.conv(od+dd[3],32,  kernel_size=3, stride=1)
-        self.predict_flow2 = self.predict_flow(od+dd[4]) 
-        self.deconv2 = self.deconv(2, 2, kernel_size=4, stride=2, padding=1)
+        self.predict_flow2 = self.predict_flow(od+dd[4])
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
