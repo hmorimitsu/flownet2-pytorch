@@ -353,7 +353,7 @@ if __name__ == '__main__':
 
             if ((((global_iteration + 1) % args.log_frequency) == 0 and not is_validate) or
                 (is_validate and batch_idx == args.validation_n_batches - 1) or
-                (batch_idx == (len(data_loader) - 1))):
+                (batch_idx == (len(data_loader) - 1)) or (batch_idx == args.train_n_batches - 1)):
 
                 global_iteration = global_iteration if not is_validate else start_iteration
 
