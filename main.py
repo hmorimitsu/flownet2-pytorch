@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
+from torchvision import utils as torchvision_utils
 from tensorboardX import SummaryWriter
 
 import argparse, os, sys, subprocess
@@ -15,6 +16,7 @@ from os.path import *
 
 import models, losses, datasets
 from utils import flow_utils, tools
+from utils.flow2image import f2i
 
 # fp32 copy of parameters for update
 global param_copy
@@ -42,6 +44,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--validation_frequency', type=int, default=5, help='validate every n epochs')
     parser.add_argument('--validation_n_batches', type=int, default=-1)
+    parser.add_argument('--validation_log_images', action='store_true')
     parser.add_argument('--render_validation', action='store_true', help='run inference (save flows to file) and every validation_frequency epoch')
 
     parser.add_argument('--inference', action='store_true')
@@ -268,20 +271,42 @@ if __name__ == '__main__':
             args.train_n_batches = np.inf if args.train_n_batches < 0 else args.train_n_batches
             progress = tqdm(tools.IteratorTimer(data_loader), ncols=120, total=np.minimum(len(data_loader), args.train_n_batches), smoothing=.9, miniters=1, leave=True, position=offset, desc=title)
 
+        def convert_flow_to_image(flow_converter, flow_tensor_batch):
+            imgs = []
+            for i in range(flow_tensor_batch.size()[0]):
+                flow = flow_tensor_batch[i].numpy().transpose((1, 2, 0))
+                img = flow_converter._flowToColor(flow)
+                imgs.append(torch.from_numpy(img.transpose((2, 0, 1))))
+            return imgs
+
         last_log_batch_idx = 0
         last_log_time = progress._time()
         for batch_idx, (data, target) in enumerate(progress):
+            global_iteration = start_iteration + batch_idx
 
             data, target = [Variable(d) for d in data], [Variable(t) for t in target]
             if args.cuda and args.number_gpus == 1:
                 data, target = [d.cuda(async=True) for d in data], [t.cuda(async=True) for t in target]
 
             optimizer.zero_grad() if not is_validate else None
-            losses = model(data[0], target[0])
+            losses, output = model(data[0], target[0], inference=True)
             losses = [torch.mean(loss_value) for loss_value in losses]
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.item()
             loss_values = [v.item() for v in losses]
+
+            if is_validate and args.validation_log_images and batch_idx == 0:
+                output_viz = output.detach().cpu()
+                target_viz = target[0].detach().cpu()
+                flow_converter = f2i.Flow()
+
+                imgs = convert_flow_to_image(flow_converter, target_viz)
+                imgs = torchvision_utils.make_grid(imgs, normalize=False, scale_each=False)
+                logger.add_image('target flow', imgs, global_iteration)
+
+                imgs = convert_flow_to_image(flow_converter, output_viz)
+                imgs = torchvision_utils.make_grid(imgs, normalize=False, scale_each=False)
+                logger.add_image('predicted flow', imgs, global_iteration)
 
             # gather loss_labels, direct return leads to recursion limit error as it looks for variables to gather'
             loss_labels = list(model.module.loss.loss_labels)
@@ -308,7 +333,6 @@ if __name__ == '__main__':
                 optimizer.step()
 
             # Update hyperparameters if needed
-            global_iteration = start_iteration + batch_idx
             if not is_validate:
                 tools.update_hyperparameter_schedule(args, epoch, global_iteration, optimizer)
                 loss_labels.append('lr')
