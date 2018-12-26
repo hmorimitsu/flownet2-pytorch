@@ -413,9 +413,21 @@ if __name__ == '__main__':
     global_iteration = 0
 
     for epoch in progress:
-        if args.inference or (args.render_validation and ((epoch - 1) % args.validation_frequency) == 0):
-            stats = inference(args=args, epoch=epoch - 1, data_loader=inference_loader, model=model_and_loss, offset=offset)
+        if not args.skip_training:
+            train_loss, iterations = train(args=args, epoch=epoch, start_iteration=global_iteration, data_loader=train_loader, model=model_and_loss, optimizer=optimizer, logger=train_logger, offset=offset)
+            global_iteration += iterations
             offset += 1
+
+            # save checkpoint after every validation_frequency number of epochs
+            if ((epoch - 1) % args.validation_frequency) == 0:
+                checkpoint_progress = tqdm(ncols=100, desc='Saving Checkpoint', position=offset)
+                tools.save_checkpoint({   'arch' : args.model,
+                                          'epoch': epoch,
+                                          'state_dict': model_and_loss.module.model.state_dict(),
+                                          'best_EPE': train_loss}, 
+                                          False, args.save, args.model, filename = 'train-checkpoint.pth.tar')
+                checkpoint_progress.update(1)
+                checkpoint_progress.close()
 
         if not args.skip_validation and ((epoch - 1) % args.validation_frequency) == 0:
             validation_loss, _ = train(args=args, epoch=epoch - 1, start_iteration=global_iteration, data_loader=validation_loader, model=model_and_loss, optimizer=optimizer, logger=validation_logger, is_validate=True, offset=offset)
@@ -436,22 +448,9 @@ if __name__ == '__main__':
             checkpoint_progress.close()
             offset += 1
 
-        if not args.skip_training:
-            train_loss, iterations = train(args=args, epoch=epoch, start_iteration=global_iteration, data_loader=train_loader, model=model_and_loss, optimizer=optimizer, logger=train_logger, offset=offset)
-            global_iteration += iterations
+        if args.inference or (args.render_validation and ((epoch - 1) % args.validation_frequency) == 0):
+            stats = inference(args=args, epoch=epoch - 1, data_loader=inference_loader, model=model_and_loss, offset=offset)
             offset += 1
-
-            # save checkpoint after every validation_frequency number of epochs
-            if ((epoch - 1) % args.validation_frequency) == 0:
-                checkpoint_progress = tqdm(ncols=100, desc='Saving Checkpoint', position=offset)
-                tools.save_checkpoint({   'arch' : args.model,
-                                          'epoch': epoch,
-                                          'state_dict': model_and_loss.module.model.state_dict(),
-                                          'best_EPE': train_loss}, 
-                                          False, args.save, args.model, filename = 'train-checkpoint.pth.tar')
-                checkpoint_progress.update(1)
-                checkpoint_progress.close()
-
 
         train_logger.add_scalar('seconds per epoch', progress._time() - last_epoch_time, epoch)
         last_epoch_time = progress._time()
