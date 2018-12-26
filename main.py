@@ -189,7 +189,7 @@ if __name__ == '__main__':
         # assing to cuda or wrap with dataparallel, model and loss 
         if args.cuda and (args.number_gpus > 0) and args.fp16:
             block.log('Parallelizing')
-            model_and_loss = nn.parallel.DataParallel(model_and_loss, device_ids=list(range(args.number_gpus)))
+            model_and_loss = nn.DataParallel(model_and_loss, device_ids=list(range(args.number_gpus)))
 
             block.log('Initializing CUDA')
             model_and_loss = model_and_loss.cuda().half()
@@ -200,7 +200,7 @@ if __name__ == '__main__':
             block.log('Initializing CUDA')
             model_and_loss = model_and_loss.cuda()
             block.log('Parallelizing')
-            model_and_loss = nn.parallel.DataParallel(model_and_loss, device_ids=list(range(args.number_gpus)))
+            model_and_loss = nn.DataParallel(model_and_loss, device_ids=list(range(args.number_gpus)))
             torch.cuda.manual_seed(args.seed) 
 
         else:

@@ -33,8 +33,13 @@ class L1Loss(nn.Module):
         self.loss_labels = ['L1', 'EPE']
 
     def forward(self, output, target):
-        lossvalue = self.loss(output, target)
-        epevalue = EPE(output, target)
+        epe = EPE(output, target)
+        loss = self.loss(output, target)
+        if self.args.cuda:
+            epe = epe.to('cuda:0')
+            loss = loss.to('cuda:0')
+        epevalue += epe
+        lossvalue += loss
         return [lossvalue, epevalue]
 
 class L2Loss(nn.Module):
@@ -45,8 +50,13 @@ class L2Loss(nn.Module):
         self.loss_labels = ['L2', 'EPE']
 
     def forward(self, output, target):
-        lossvalue = self.loss(output, target)
-        epevalue = EPE(output, target)
+        epe = EPE(output, target)
+        loss = self.loss(output, target)
+        if self.args.cuda:
+            epe = epe.to('cuda:0')
+            loss = loss.to('cuda:0')
+        epevalue += epe
+        lossvalue += loss
         return [lossvalue, epevalue]
 
 class MultiScale(nn.Module):
@@ -57,7 +67,7 @@ class MultiScale(nn.Module):
         self.numScales = numScales
         self.loss_weights = torch.FloatTensor([(l_weight / 2 ** scale) for scale in range(self.numScales)])
         if args.cuda:
-            self.loss_weights = self.loss_weights.cuda()
+            self.loss_weights = self.loss_weights.to('cuda:0')
         self.args = args
         self.l_type = norm
         self.div_flow = 0.05
@@ -79,11 +89,20 @@ class MultiScale(nn.Module):
             target = self.div_flow * target
             for i, output_ in enumerate(output):
                 target_ = self.multiScales[i](target)
-                epevalue += self.loss_weights[i]*EPE(output_, target_)
-                lossvalue += self.loss_weights[i]*self.loss(output_, target_)
+                epe = EPE(output_, target_)
+                loss = self.loss(output_, target_)
+                if self.args.cuda:
+                    epe = epe.to('cuda:0')
+                    loss = loss.to('cuda:0')
+                epevalue += self.loss_weights[i]*epe
+                lossvalue += self.loss_weights[i]*loss
             return [lossvalue, epevalue]
         else:
-            epevalue += EPE(output, target)
-            lossvalue += self.loss(output, target)
+            epe = EPE(output, target)
+            loss = self.loss(output, target)
+            if self.args.cuda:
+                epe = epe.to('cuda:0')
+                loss = loss.to('cuda:0')
+            epevalue += epe
+            lossvalue += loss
             return  [lossvalue, epevalue]
-
