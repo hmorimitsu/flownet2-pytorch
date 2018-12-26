@@ -453,8 +453,8 @@ if __name__ == '__main__':
                 checkpoint_progress.update(1)
                 checkpoint_progress.close()
 
-        if not args.skip_validation and ((epoch - 1) % args.validation_frequency) == 0:
-            validation_loss, _ = train(args=args, epoch=epoch - 1, start_iteration=global_iteration, data_loader=validation_loader, model=model_and_loss, optimizer=optimizer, logger=validation_logger, is_validate=True, offset=offset)
+        if not args.skip_validation and (epoch % args.validation_frequency) == 0:
+            validation_loss, _ = train(args=args, epoch=epoch, start_iteration=global_iteration, data_loader=validation_loader, model=model_and_loss, optimizer=optimizer, logger=validation_logger, is_validate=True, offset=offset)
             offset += 1
 
             is_best = False
@@ -472,8 +472,8 @@ if __name__ == '__main__':
             checkpoint_progress.close()
             offset += 1
 
-        if args.inference or (args.render_validation and ((epoch - 1) % args.validation_frequency) == 0):
-            stats = inference(args=args, epoch=epoch - 1, data_loader=inference_loader, model=model_and_loss, offset=offset)
+        if args.inference or (args.render_validation and (epoch % args.validation_frequency) == 0):
+            stats = inference(args=args, epoch=epoch, data_loader=inference_loader, model=model_and_loss, offset=offset)
             offset += 1
 
         train_logger.add_scalar('seconds per epoch', progress._time() - last_epoch_time, epoch)
