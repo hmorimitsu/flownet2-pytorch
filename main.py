@@ -253,7 +253,8 @@ if __name__ == '__main__':
 
     # Reusable function for training and validataion
     def train(args, epoch, start_iteration, data_loader, model, optimizer, logger, is_validate=False, offset=0):
-        statistics = []
+        running_statistics = None  # Initialize below when the first losses are collected
+        all_losses = None  # Initialize below when the first losses are collected
         total_loss = 0
 
         if is_validate:
@@ -267,6 +268,7 @@ if __name__ == '__main__':
             args.train_n_batches = np.inf if args.train_n_batches < 0 else args.train_n_batches
             progress = tqdm(tools.IteratorTimer(data_loader), ncols=120, total=np.minimum(len(data_loader), args.train_n_batches), smoothing=.9, miniters=1, leave=True, position=offset, desc=title)
 
+        last_log_batch_idx = 0
         last_log_time = progress._time()
         for batch_idx, (data, target) in enumerate(progress):
 
@@ -315,28 +317,29 @@ if __name__ == '__main__':
             loss_labels.append('load')
             loss_values.append(progress.iterable.last_duration)
 
-            # Print out statistics
-            statistics.append(loss_values)
+            if running_statistics is None:
+                running_statistics = np.array(loss_values)
+                all_losses = np.zeros((len(data_loader), len(loss_values)), np.float32)
+            else:
+                running_statistics += np.array(loss_values)
+            all_losses[batch_idx] = loss_values.copy()
             title = '{} Epoch {}'.format('Validating' if is_validate else 'Training', epoch)
 
-            progress.set_description(title + ' ' + tools.format_dictionary_of_losses(loss_labels, statistics[-1]))
+            progress.set_description(title + ' ' + tools.format_dictionary_of_losses(loss_labels, running_statistics / (batch_idx + 1)))
 
             if ((((global_iteration + 1) % args.log_frequency) == 0 and not is_validate) or
-                (is_validate and batch_idx == args.validation_n_batches - 1)):
+                (is_validate and batch_idx == args.validation_n_batches - 1) or
+                (global_iteration == (len(data_loader) - 1))):
 
                 global_iteration = global_iteration if not is_validate else start_iteration
 
-                logger.add_scalar('batch logs per second', len(statistics) / (progress._time() - last_log_time), global_iteration)
+                logger.add_scalar('batch logs per second', (batch_idx - last_log_batch_idx) / (progress._time() - last_log_time), global_iteration)
                 last_log_time = progress._time()
-
-                all_losses = np.array(statistics)
+                last_log_batch_idx = batch_idx
 
                 for i, key in enumerate(loss_labels):
-                    logger.add_scalar('average batch ' + str(key), all_losses[:, i].mean(), global_iteration)
-                    logger.add_histogram(str(key), all_losses[:, i], global_iteration)
-
-            # Reset Summary
-            statistics = []
+                    logger.add_scalar('average batch ' + str(key), all_losses[:batch_idx + 1, i].mean(), global_iteration)
+                    logger.add_histogram(str(key), all_losses[:batch_idx + 1, i], global_iteration)
 
             if ( is_validate and ( batch_idx == args.validation_n_batches) ):
                 break
