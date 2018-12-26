@@ -30,8 +30,6 @@ if __name__ == '__main__':
     parser.add_argument('--train_n_batches', type=int, default=-1, help='Number of min-batches per epoch. If < 0, it will be determined by training_dataloader')
     parser.add_argument('--crop_size', type=int, nargs='+', default=[256, 256], help="Spatial dimension to crop training samples for training")
     parser.add_argument('--gradient_clip', type=float, default=None)
-    parser.add_argument('--schedule_lr_frequency', type=int, default=0, help='in number of iterations (0 for no schedule)')
-    parser.add_argument('--schedule_lr_fraction', type=float, default=10)
     parser.add_argument("--rgb_max", type=float, default=255.)
 
     parser.add_argument('--number_workers', '-nw', '--num_workers', type=int, default=8)
@@ -64,11 +62,15 @@ if __name__ == '__main__':
 
     parser.add_argument("--pwcnet_md", type=int, default=4)
 
+    parser.add_argument("--scheduler_milestones", type=int, nargs='+', default=[300000, 400000, 500000])
+
     tools.add_arguments_for_module(parser, models, argument_for_class='model', default='FlowNet2')
 
     tools.add_arguments_for_module(parser, losses, argument_for_class='loss', default='L1Loss')
 
     tools.add_arguments_for_module(parser, torch.optim, argument_for_class='optimizer', default='Adam', skip_params=['params'])
+
+    tools.add_arguments_for_module(parser, torch.optim.lr_scheduler, argument_for_class='scheduler', default='MultiStepLR')
     
     tools.add_arguments_for_module(parser, datasets, argument_for_class='training_dataset', default='MpiSintelFinal', 
                                     skip_params=['is_cropped'],
@@ -105,6 +107,7 @@ if __name__ == '__main__':
         args.model_class = tools.module_to_dict(models)[args.model]
         args.optimizer_class = tools.module_to_dict(torch.optim)[args.optimizer]
         args.loss_class = tools.module_to_dict(losses)[args.loss]
+        args.scheduler_class = tools.module_to_dict(torch.optim.lr_scheduler)[args.scheduler]
 
         args.training_dataset_class = tools.module_to_dict(datasets)[args.training_dataset]
         args.validation_dataset_class = tools.module_to_dict(datasets)[args.validation_dataset]
@@ -122,6 +125,8 @@ if __name__ == '__main__':
             args.skip_training = True
             args.total_epochs = 1
             args.inference_dir = "{}/inference".format(args.save)
+
+    args.scheduler_gamma = 0.5
 
     print('Source Code')
     print(('  Current Git Hash: {}\n'.format(args.current_hash)))
@@ -250,12 +255,19 @@ if __name__ == '__main__':
         for param, default in list(kwargs.items()):
             block.log("{} = {} ({})".format(param, default, type(default)))
 
+    # Dynamically load the scheduler with parameters passed in via "--scheduler_[param]=[value]" arguments 
+    with tools.TimerBlock("Initializing {} LR Scheduler".format(args.scheduler)) as block:
+        kwargs = tools.kwargs_from_args(args, 'scheduler')
+        scheduler = args.scheduler_class(optimizer, **kwargs)
+        for param, default in list(kwargs.items()):
+            block.log("{} = {} ({})".format(param, default, type(default)))
+
     # Log all arguments to file
     for argument, value in sorted(vars(args).items()):
         block.log2file(args.log_file, '{}: {}'.format(argument, value))
 
     # Reusable function for training and validataion
-    def train(args, epoch, start_iteration, data_loader, model, optimizer, logger, is_validate=False, offset=0):
+    def train(args, epoch, start_iteration, data_loader, model, optimizer, scheduler, logger, is_validate=False, offset=0):
         running_statistics = None  # Initialize below when the first losses are collected
         all_losses = None  # Initialize below when the first losses are collected
         total_loss = 0
@@ -334,7 +346,7 @@ if __name__ == '__main__':
 
             # Update hyperparameters if needed
             if not is_validate:
-                tools.update_hyperparameter_schedule(args, epoch, global_iteration, optimizer)
+                scheduler.step()
                 loss_labels.append('lr')
                 loss_values.append(optimizer.param_groups[0]['lr'])
 
@@ -438,7 +450,7 @@ if __name__ == '__main__':
 
     for epoch in progress:
         if not args.skip_training:
-            train_loss, iterations = train(args=args, epoch=epoch, start_iteration=global_iteration, data_loader=train_loader, model=model_and_loss, optimizer=optimizer, logger=train_logger, offset=offset)
+            train_loss, iterations = train(args=args, epoch=epoch, start_iteration=global_iteration, data_loader=train_loader, model=model_and_loss, optimizer=optimizer, scheduler=scheduler, logger=train_logger, offset=offset)
             global_iteration += iterations
             offset += 1
 
@@ -454,7 +466,7 @@ if __name__ == '__main__':
                 checkpoint_progress.close()
 
         if not args.skip_validation and (epoch % args.validation_frequency) == 0:
-            validation_loss, _ = train(args=args, epoch=epoch, start_iteration=global_iteration, data_loader=validation_loader, model=model_and_loss, optimizer=optimizer, logger=validation_logger, is_validate=True, offset=offset)
+            validation_loss, _ = train(args=args, epoch=epoch, start_iteration=global_iteration, data_loader=validation_loader, model=model_and_loss, optimizer=optimizer, scheduler=scheduler, logger=validation_logger, is_validate=True, offset=offset)
             offset += 1
 
             is_best = False
