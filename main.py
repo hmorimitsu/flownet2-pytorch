@@ -145,6 +145,8 @@ if __name__ == '__main__':
         gpuargs = {'num_workers': args.effective_number_workers, 
                    'pin_memory': True, 
                    'drop_last' : True} if args.cuda else {}
+        val_gpuargs = gpuargs.copy()
+        val_gpuargs['drop_last'] = False
         inf_gpuargs = gpuargs.copy()
         inf_gpuargs['num_workers'] = args.number_workers
 
@@ -169,7 +171,7 @@ if __name__ == '__main__':
             block.log('Validation Dataset: {}'.format(args.validation_dataset))
             block.log('Validation Input: {}'.format(' '.join([str([d for d in x.size()]) for x in validation_dataset[0][0]])))
             block.log('Validation Targets: {}'.format(' '.join([str([d for d in x.size()]) for x in validation_dataset[0][1]])))
-            validation_loader = DataLoader(validation_dataset, batch_size=args.effective_batch_size, shuffle=False, **gpuargs)
+            validation_loader = DataLoader(validation_dataset, batch_size=args.effective_batch_size, shuffle=False, **val_gpuargs)
 
         if exists(args.inference_dataset_root):
             inference_dataset = args.inference_dataset_class(args, False, **tools.kwargs_from_args(args, 'inference_dataset'))
@@ -310,7 +312,7 @@ if __name__ == '__main__':
         block.log2file(args.log_file, '{}: {}'.format(argument, value))
 
     # Reusable function for training and validataion
-    def train(args, epoch, start_iteration, data_loader, model, optimizer, scheduler, logger, is_validate=False, offset=0):
+    def train(args, epoch, start_iteration, data_loader, model, optimizer, scheduler, logger, is_validate=False, offset=0, max_flows_to_show=8):
         running_statistics = None  # Initialize below when the first losses are collected
         all_losses = None  # Initialize below when the first losses are collected
         total_loss = 0
@@ -326,15 +328,23 @@ if __name__ == '__main__':
             args.train_n_batches = np.inf if args.train_n_batches < 0 else args.train_n_batches
             progress = tqdm(tools.IteratorTimer(data_loader), ncols=120, total=np.minimum(len(data_loader), args.train_n_batches), smoothing=.9, miniters=1, leave=True, position=offset, desc=title)
 
-        def convert_flow_to_image(flow_converter, output_batch, target_batch):
+        def convert_flow_to_image(flow_converter, flows_viz):
             imgs = []
-            out_target = [target_batch, output_batch]
-            for i in range(output_batch.size()[0]):
-                for batch in out_target:
-                    flow = batch[i].numpy().transpose((1, 2, 0))
+            for flow_pair in flows_viz:
+                for flow in flow_pair:
+                    flow = flow.numpy().transpose((1, 2, 0))
                     img = flow_converter._flowToColor(flow)
                     imgs.append(torch.from_numpy(img.transpose((2, 0, 1))))
             return imgs
+
+        max_iters = min(len(data_loader),
+                        (args.validation_n_batches if (is_validate and args.validation_n_batches > 0) else len(data_loader)),
+                        (args.train_n_batches if (not is_validate and args.train_n_batches > 0) else len(data_loader)))
+
+        if is_validate:
+            flow_converter = f2i.Flow()
+            collect_flow_interval = int(np.ceil(float(max_iters) / max_flows_to_show))
+            flows_viz = []
 
         last_log_batch_idx = 0
         last_log_time = progress._time()
@@ -352,12 +362,11 @@ if __name__ == '__main__':
             total_loss += loss_val.item()
             loss_values = [v.item() for v in losses]
 
-            if is_validate and args.validation_log_images and batch_idx == 0:
-                output_viz = output.detach().cpu()
-                target_viz = target[0].detach().cpu()
-                flow_converter = f2i.Flow()
+            if is_validate and batch_idx % collect_flow_interval == 0:
+                flows_viz.append((target[0][0].detach().cpu(), output[0].detach().cpu()))
 
-                imgs = convert_flow_to_image(flow_converter, output_viz, target_viz)
+            if is_validate and args.validation_log_images and batch_idx == (max_iters - 1):
+                imgs = convert_flow_to_image(flow_converter, flows_viz)
                 imgs = torchvision_utils.make_grid(imgs, nrow=2, normalize=False, scale_each=False)
                 logger.add_image('target/predicted flows', imgs, global_iteration)
 
@@ -405,8 +414,7 @@ if __name__ == '__main__':
             progress.set_description(title + ' ' + tools.format_dictionary_of_losses(loss_labels, running_statistics / (batch_idx + 1)))
 
             if ((((global_iteration + 1) % args.log_frequency) == 0 and not is_validate) or
-                (is_validate and batch_idx == args.validation_n_batches - 1) or
-                (batch_idx == (len(data_loader) - 1)) or (batch_idx == args.train_n_batches - 1)):
+                    (batch_idx == max_iters - 1)):
 
                 global_iteration = global_iteration if not is_validate else start_iteration
 
