@@ -65,8 +65,7 @@ if __name__ == '__main__':
 
     parser.add_argument("--pwcnet_md", type=int, default=4)
 
-    # parser.add_argument("--scheduler_milestones", type=int, nargs='+', default=[300000, 400000, 500000])
-    parser.add_argument("--scheduler_milestones", type=int, nargs='+', default=[30, 60, 100])
+    parser.add_argument("--scheduler_milestones", type=int, nargs='+', default=[300000, 400000, 500000])
 
     tools.add_arguments_for_module(parser, models, argument_for_class='model', default='FlowNet2')
 
