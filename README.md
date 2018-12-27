@@ -13,7 +13,7 @@ Code modified from flownet2-pytorch [https://github.com/NVIDIA/flownet2-pytorch]
 - Replaced LR scheduler by torch.optim.lr_scheduler.
 - Included training augmentation.
   - The augmentation code come from [https://github.com/ClementPinard/FlowNetPytorch](https://github.com/ClementPinard/FlowNetPytorch).
-- Training checkpoint store sptimizer and scheduler parameters for resuming training later.
+- Training checkpoint store optimizer and scheduler parameters for resuming training later.
 
 
 # flownet2-pytorch 
