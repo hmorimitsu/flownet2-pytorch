@@ -145,8 +145,6 @@ if __name__ == '__main__':
         gpuargs = {'num_workers': args.effective_number_workers, 
                    'pin_memory': True, 
                    'drop_last' : True} if args.cuda else {}
-        val_gpuargs = gpuargs.copy()
-        val_gpuargs['drop_last'] = False
         inf_gpuargs = gpuargs.copy()
         inf_gpuargs['num_workers'] = args.number_workers
 
@@ -171,7 +169,7 @@ if __name__ == '__main__':
             block.log('Validation Dataset: {}'.format(args.validation_dataset))
             block.log('Validation Input: {}'.format(' '.join([str([d for d in x.size()]) for x in validation_dataset[0][0]])))
             block.log('Validation Targets: {}'.format(' '.join([str([d for d in x.size()]) for x in validation_dataset[0][1]])))
-            validation_loader = DataLoader(validation_dataset, batch_size=args.effective_batch_size, shuffle=False, **val_gpuargs)
+            validation_loader = DataLoader(validation_dataset, batch_size=args.effective_batch_size, shuffle=False, **gpuargs)
 
         if exists(args.inference_dataset_root):
             inference_dataset = args.inference_dataset_class(args, False, **tools.kwargs_from_args(args, 'inference_dataset'))
