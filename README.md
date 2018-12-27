@@ -13,6 +13,7 @@ Code modified from flownet2-pytorch [https://github.com/NVIDIA/flownet2-pytorch]
 - Replaced LR scheduler by torch.optim.lr_scheduler.
 - Included training augmentation.
   - The augmentation code come from [https://github.com/ClementPinard/FlowNetPytorch](https://github.com/ClementPinard/FlowNetPytorch).
+- Training checkpoint store sptimizer and scheduler parameters for resuming training later.
 
 
 # flownet2-pytorch 
@@ -68,7 +69,7 @@ L1 and L2 losses with multi-scale support are available in [losses.py](./losses.
 ### Python requirements 
 Currently, the code supports python 3
 * numpy 
-* PyTorch ( == 0.4.1, for <= 0.4.0 see branch [python36-PyTorch0.4](https://github.com/NVIDIA/flownet2-pytorch/tree/python36-PyTorch0.4))
+* PyTorch 1.0
 * scipy 
 * scikit-image
 * tensorboardX
