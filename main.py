@@ -251,11 +251,13 @@ if __name__ == '__main__':
     with tools.TimerBlock("Loading {} checkpoint".format(args.model)) as block:
         def load_checkpoint(model, optimizer, scheduler, save_path):
             epoch = 0
+            iteration = 0
             best_epe = 99999.9
             checkpoint = torch.load(save_path)
             try:
                 # Models saved by this code
                 epoch = checkpoint['epoch']
+                iteration = checkpoint['iteration']
                 best_epe = checkpoint['best_EPE']
                 model.load_state_dict(checkpoint['model_state_dict'])
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -276,11 +278,11 @@ if __name__ == '__main__':
                     model_dict.update(pretrained_dict)
                     model.load_state_dict(pretrained_dict)
                 
-            return model, optimizer, scheduler, epoch, best_epe
+            return model, optimizer, scheduler, epoch, iteration, best_epe
 
         # Load weights if needed, otherwise randomly initialize
         if args.resume and os.path.isfile(args.resume):
-            model_and_loss.module.model, optimizer, scheduler, args.start_epoch, best_err = load_checkpoint(model_and_loss.module.model, optimizer, scheduler, args.resume)
+            model_and_loss.module.model, optimizer, scheduler, args.start_epoch, args.start_iteration, best_err = load_checkpoint(model_and_loss.module.model, optimizer, scheduler, args.resume)
             block.log("Loaded checkpoint '{}'".format(args.resume))
             block.log("Start epoch {}".format(args.start_epoch))
             block.log("Best EPE {}".format(best_err))
@@ -300,6 +302,7 @@ if __name__ == '__main__':
             quit()
 
         else:
+            args.start_iteration = 0
             block.log("Random initialization")
 
     # Log all arguments to file
@@ -481,10 +484,11 @@ if __name__ == '__main__':
 
         return
 
-    def generate_checkpoint_state(model, optimizer, scheduler, arch, epoch, best_epe, is_training):
+    def generate_checkpoint_state(model, optimizer, scheduler, arch, epoch, iteration, best_epe, is_training):
         state = {
             'arch' : arch,
             'epoch': epoch,
+            'iteration': iteration,
             'best_EPE': best_epe,
             'model_state_dict': model.state_dict()
         }
@@ -502,7 +506,7 @@ if __name__ == '__main__':
     progress = tqdm(list(range(args.start_epoch, args.total_epochs + 1)), miniters=1, ncols=100, desc='Overall Progress', leave=True, position=0)
     offset = 1
     last_epoch_time = progress._time()
-    global_iteration = 0
+    global_iteration = args.start_iteration
 
     for epoch in progress:
         if not args.skip_training:
@@ -513,7 +517,7 @@ if __name__ == '__main__':
             # save checkpoint after every validation_frequency number of epochs
             if ((epoch - 1) % args.validation_frequency) == 0:
                 checkpoint_progress = tqdm(ncols=100, desc='Saving Checkpoint', position=offset)
-                tools.save_checkpoint(generate_checkpoint_state(model_and_loss.module.model, optimizer, scheduler, args.model, epoch+1, train_loss, True), 
+                tools.save_checkpoint(generate_checkpoint_state(model_and_loss.module.model, optimizer, scheduler, args.model, epoch+1, global_iteration, train_loss, True), 
                                       False, args.save, args.model, filename = 'train-checkpoint.pth.tar')
                 checkpoint_progress.update(1)
                 checkpoint_progress.close()
@@ -528,7 +532,7 @@ if __name__ == '__main__':
                 is_best = True
 
             checkpoint_progress = tqdm(ncols=100, desc='Saving Checkpoint', position=offset)
-            tools.save_checkpoint(generate_checkpoint_state(model_and_loss.module.model, optimizer, scheduler, args.model, epoch+1, best_err, False), 
+            tools.save_checkpoint(generate_checkpoint_state(model_and_loss.module.model, optimizer, scheduler, args.model, epoch+1, global_iteration, best_err, False), 
                                   is_best, args.save, args.model)
             checkpoint_progress.update(1)
             checkpoint_progress.close()
