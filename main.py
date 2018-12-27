@@ -326,12 +326,14 @@ if __name__ == '__main__':
             args.train_n_batches = np.inf if args.train_n_batches < 0 else args.train_n_batches
             progress = tqdm(tools.IteratorTimer(data_loader), ncols=120, total=np.minimum(len(data_loader), args.train_n_batches), smoothing=.9, miniters=1, leave=True, position=offset, desc=title)
 
-        def convert_flow_to_image(flow_converter, flow_tensor_batch):
+        def convert_flow_to_image(flow_converter, output_batch, target_batch):
             imgs = []
-            for i in range(flow_tensor_batch.size()[0]):
-                flow = flow_tensor_batch[i].numpy().transpose((1, 2, 0))
-                img = flow_converter._flowToColor(flow)
-                imgs.append(torch.from_numpy(img.transpose((2, 0, 1))))
+            out_target = [target_batch, output_batch]
+            for i in range(output_batch.size()[0]):
+                for batch in out_target:
+                    flow = batch[i].numpy().transpose((1, 2, 0))
+                    img = flow_converter._flowToColor(flow)
+                    imgs.append(torch.from_numpy(img.transpose((2, 0, 1))))
             return imgs
 
         last_log_batch_idx = 0
@@ -355,13 +357,9 @@ if __name__ == '__main__':
                 target_viz = target[0].detach().cpu()
                 flow_converter = f2i.Flow()
 
-                imgs = convert_flow_to_image(flow_converter, target_viz)
-                imgs = torchvision_utils.make_grid(imgs, normalize=False, scale_each=False)
-                logger.add_image('target flow', imgs, global_iteration)
-
-                imgs = convert_flow_to_image(flow_converter, output_viz)
-                imgs = torchvision_utils.make_grid(imgs, normalize=False, scale_each=False)
-                logger.add_image('predicted flow', imgs, global_iteration)
+                imgs = convert_flow_to_image(flow_converter, output_viz, target_viz)
+                imgs = torchvision_utils.make_grid(imgs, nrow=2, normalize=False, scale_each=False)
+                logger.add_image('target/predicted flows', imgs, global_iteration)
 
             # gather loss_labels, direct return leads to recursion limit error as it looks for variables to gather'
             loss_labels = list(model.module.loss.loss_labels)
