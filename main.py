@@ -65,7 +65,8 @@ if __name__ == '__main__':
 
     parser.add_argument("--pwcnet_md", type=int, default=4)
 
-    parser.add_argument("--scheduler_milestones", type=int, nargs='+', default=[300000, 400000, 500000])
+    # parser.add_argument("--scheduler_milestones", type=int, nargs='+', default=[300000, 400000, 500000])
+    parser.add_argument("--scheduler_milestones", type=int, nargs='+', default=[30, 60, 100])
 
     tools.add_arguments_for_module(parser, models, argument_for_class='model', default='FlowNet2')
 
@@ -224,32 +225,6 @@ if __name__ == '__main__':
             block.log('CUDA not being used')
             torch.manual_seed(args.seed)
 
-        # Load weights if needed, otherwise randomly initialize
-        if args.resume and os.path.isfile(args.resume):
-            block.log("Loading checkpoint '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume)
-
-            if args.model == 'PWCNet' or args.model == 'PWCDCNet':
-                pretrained_dict = checkpoint
-                model_dict = model_and_loss.module.model.state_dict()
-                pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
-                model_dict.update(pretrained_dict)
-                model_and_loss.module.model.load_state_dict(pretrained_dict)
-                block.log("Loaded checkpoint '{}'".format(args.resume))
-            else:
-                if not args.inference:
-                    args.start_epoch = checkpoint['epoch']
-                best_err = checkpoint['best_EPE']
-                model_and_loss.module.model.load_state_dict(checkpoint['state_dict'])
-                block.log("Loaded checkpoint '{}' (at epoch {})".format(args.resume, checkpoint['epoch']))
-
-        elif args.resume and args.inference:
-            block.log("No checkpoint found at '{}'".format(args.resume))
-            quit()
-
-        else:
-            block.log("Random initialization")
-
         block.log("Initializing save directory: {}".format(args.save))
         if not os.path.exists(args.save):
             os.makedirs(args.save)
@@ -273,6 +248,60 @@ if __name__ == '__main__':
         scheduler = args.scheduler_class(optimizer, **kwargs)
         for param, default in list(kwargs.items()):
             block.log("{} = {} ({})".format(param, default, type(default)))
+
+    with tools.TimerBlock("Loading {} checkpoint".format(args.model)) as block:
+        def load_checkpoint(model, optimizer, scheduler, save_path):
+            epoch = 0
+            best_epe = 99999.9
+            checkpoint = torch.load(save_path)
+            try:
+                # Models saved by this code
+                epoch = checkpoint['epoch']
+                best_epe = checkpoint['best_EPE']
+                model.load_state_dict(checkpoint['model_state_dict'])
+                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                try:
+                    scheduler.state_dict()
+                    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+                except AttributeError:
+                    pass
+            except KeyError:
+                try:
+                    # FlowNet2 pretrained models
+                    model.load_state_dict(checkpoint['state_dict'])
+                except KeyError:
+                    # PWCDCNet pretrained model
+                    pretrained_dict = checkpoint
+                    model_dict = model_and_loss.module.model.state_dict()
+                    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+                    model_dict.update(pretrained_dict)
+                    model.load_state_dict(pretrained_dict)
+                
+            return model, optimizer, scheduler, epoch, best_epe
+
+        # Load weights if needed, otherwise randomly initialize
+        if args.resume and os.path.isfile(args.resume):
+            model_and_loss.module.model, optimizer, scheduler, args.start_epoch, best_err = load_checkpoint(model_and_loss.module.model, optimizer, scheduler, args.resume)
+            block.log("Loaded checkpoint '{}'".format(args.resume))
+            block.log("Start epoch {}".format(args.start_epoch))
+            block.log("Best EPE {}".format(best_err))
+            # print(optimizer.param_groups)
+            # wew
+            block.log("Optimizer state:")
+            block.log(optimizer)
+            block.log("LR Scheduler state:")
+            try:
+                ss = scheduler.state_dict()
+                block.log(ss)
+            except AttributeError:
+                pass
+
+        elif args.resume and args.inference:
+            block.log("No checkpoint found at '{}'".format(args.resume))
+            quit()
+
+        else:
+            block.log("Random initialization")
 
     # Log all arguments to file
     for argument, value in sorted(vars(args).items()):
@@ -453,6 +482,22 @@ if __name__ == '__main__':
 
         return
 
+    def generate_checkpoint_state(model, optimizer, scheduler, arch, epoch, best_epe, is_training):
+        state = {
+            'arch' : arch,
+            'epoch': epoch,
+            'best_EPE': best_epe,
+            'model_state_dict': model.state_dict()
+        }
+        if is_training:
+            state['optimizer_state_dict'] = optimizer.state_dict()
+            try:
+                scheduler.state_dict()
+                state['scheduler_state_dict'] = scheduler.state_dict()
+            except AttributeError:
+                pass
+        return state
+
     # Primary epoch loop
     best_err = 1e8
     progress = tqdm(list(range(args.start_epoch, args.total_epochs + 1)), miniters=1, ncols=100, desc='Overall Progress', leave=True, position=0)
@@ -469,11 +514,8 @@ if __name__ == '__main__':
             # save checkpoint after every validation_frequency number of epochs
             if ((epoch - 1) % args.validation_frequency) == 0:
                 checkpoint_progress = tqdm(ncols=100, desc='Saving Checkpoint', position=offset)
-                tools.save_checkpoint({   'arch' : args.model,
-                                          'epoch': epoch,
-                                          'state_dict': model_and_loss.module.model.state_dict(),
-                                          'best_EPE': train_loss}, 
-                                          False, args.save, args.model, filename = 'train-checkpoint.pth.tar')
+                tools.save_checkpoint(generate_checkpoint_state(model_and_loss.module.model, optimizer, scheduler, args.model, epoch+1, train_loss, True), 
+                                      False, args.save, args.model, filename = 'train-checkpoint.pth.tar')
                 checkpoint_progress.update(1)
                 checkpoint_progress.close()
 
@@ -487,11 +529,8 @@ if __name__ == '__main__':
                 is_best = True
 
             checkpoint_progress = tqdm(ncols=100, desc='Saving Checkpoint', position=offset)
-            tools.save_checkpoint({   'arch' : args.model,
-                                      'epoch': epoch,
-                                      'state_dict': model_and_loss.module.model.state_dict(),
-                                      'best_EPE': best_err}, 
-                                      is_best, args.save, args.model)
+            tools.save_checkpoint(generate_checkpoint_state(model_and_loss.module.model, optimizer, scheduler, args.model, epoch+1, best_err, False), 
+                                  is_best, args.save, args.model)
             checkpoint_progress.update(1)
             checkpoint_progress.close()
             offset += 1
