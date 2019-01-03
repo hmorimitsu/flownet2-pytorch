@@ -126,12 +126,6 @@ if __name__ == '__main__':
         # dict to collect activation gradients (for training debug purpose)
         args.grads = {}
 
-        if args.inference:
-            args.skip_validation = True
-            args.skip_training = True
-            args.total_epochs = 1
-            args.inference_dir = "{}/inference".format(args.save)
-
     args.scheduler_gamma = 0.5
 
     print('Source Code')
@@ -317,6 +311,13 @@ if __name__ == '__main__':
             block.log(ss)
         except AttributeError:
             pass
+
+    if args.inference:
+        args.skip_validation = True
+        args.skip_training = True
+        args.start_epoch = 1
+        args.total_epochs = 1
+        args.inference_dir = "{}/inference".format(args.save)
 
     # Log all arguments to file
     for argument, value in sorted(vars(args).items()):
