@@ -36,8 +36,8 @@ class L1Loss(nn.Module):
         epevalue = EPE(output, target)
         lossvalue = self.loss(output, target)
         if self.args.cuda:
-            epevalue = epe.to('cuda:0')
-            lossvalue = loss.to('cuda:0')
+            epevalue = epevalue.to('cuda:0')
+            lossvalue = lossvalue.to('cuda:0')
         return [lossvalue, epevalue]
 
 class L2Loss(nn.Module):
@@ -51,8 +51,8 @@ class L2Loss(nn.Module):
         epevalue = EPE(output, target)
         lossvalue = self.loss(output, target)
         if self.args.cuda:
-            epevalue = epe.to('cuda:0')
-            lossvalue = loss.to('cuda:0')
+            epevalue = epevalue.to('cuda:0')
+            lossvalue = lossvalue.to('cuda:0')
         return [lossvalue, epevalue]
 
 class MultiScale(nn.Module):
