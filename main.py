@@ -33,6 +33,9 @@ if __name__ == '__main__':
     parser.add_argument('--gradient_clip', type=float, default=None)
     parser.add_argument("--rgb_max", type=float, default=255.)
 
+    parser.add_argument("--weight_decay", type=float, default=4e-4)
+    parser.add_argument("--bias_decay", type=float, default=0.0)
+
     parser.add_argument('--number_workers', '-nw', '--num_workers', type=int, default=8)
     parser.add_argument('--number_gpus', '-ng', type=int, default=-1, help='number of GPUs to use')
     parser.add_argument('--no_cuda', action='store_true')
@@ -235,18 +238,28 @@ if __name__ == '__main__':
     with tools.TimerBlock("Initializing {} Optimizer".format(args.optimizer)) as block:
         kwargs = tools.kwargs_from_args(args, 'optimizer')
         if args.fp16:
-            optimizer = args.optimizer_class([p for p in param_copy if p.requires_grad], **kwargs)
+            params_groups = [
+                {'params': [param_copy[i] for i, p in enumerate(model_and_loss.named_parameters()) if 'weight' in p[0] and p[1].requires_grad],
+                 'weight_decay': args.weight_decay},
+                {'params': [param_copy[i] for i, p in enumerate(model_and_loss.named_parameters()) if 'bias' in p[0] and p[1].requires_grad],
+                 'weight_decay': args.bias_decay}]
+            optimizer = args.optimizer_class(params_groups, **kwargs)
         else:
-            optimizer = args.optimizer_class([p for p in model_and_loss.parameters() if p.requires_grad], **kwargs)
-        for param, default in list(kwargs.items()):
-            block.log("{} = {} ({})".format(param, default, type(default)))
+            params_groups = [
+                {'params': [p[1] for p in model_and_loss.named_parameters() if 'weight' in p[0] and p[1].requires_grad],
+                 'weight_decay': args.weight_decay},
+                {'params': [p[1] for p in model_and_loss.named_parameters() if 'bias' in p[0] and p[1].requires_grad],
+                 'weight_decay': args.bias_decay}]
+            optimizer = args.optimizer_class(params_groups, **kwargs)
+        # for param, default in list(kwargs.items()):
+        #     block.log("{} = {} ({})".format(param, default, type(default)))
 
     # Dynamically load the scheduler with parameters passed in via "--scheduler_[param]=[value]" arguments 
     with tools.TimerBlock("Initializing {} LR Scheduler".format(args.scheduler)) as block:
         kwargs = tools.kwargs_from_args(args, 'scheduler')
         scheduler = args.scheduler_class(optimizer, **kwargs)
-        for param, default in list(kwargs.items()):
-            block.log("{} = {} ({})".format(param, default, type(default)))
+        # for param, default in list(kwargs.items()):
+        #     block.log("{} = {} ({})".format(param, default, type(default)))
 
     with tools.TimerBlock("Loading {} checkpoint".format(args.model)) as block:
         def load_checkpoint(model, optimizer, scheduler, save_path):
@@ -286,16 +299,6 @@ if __name__ == '__main__':
             block.log("Loaded checkpoint '{}'".format(args.resume))
             block.log("Start epoch {}".format(args.start_epoch))
             block.log("Best EPE {}".format(best_err))
-            # print(optimizer.param_groups)
-            # wew
-            block.log("Optimizer state:")
-            block.log(optimizer)
-            block.log("LR Scheduler state:")
-            try:
-                ss = scheduler.state_dict()
-                block.log(ss)
-            except AttributeError:
-                pass
 
         elif args.resume and args.inference:
             block.log("No checkpoint found at '{}'".format(args.resume))
@@ -304,6 +307,16 @@ if __name__ == '__main__':
         else:
             args.start_iteration = 0
             block.log("Random initialization")
+
+    with tools.TimerBlock("Optimizer and Scheduler states") as block:
+        block.log("Optimizer state:")
+        block.log(optimizer)
+        try:
+            ss = scheduler.state_dict()
+            block.log("LR Scheduler state:")
+            block.log(ss)
+        except AttributeError:
+            pass
 
     # Log all arguments to file
     for argument, value in sorted(vars(args).items()):
