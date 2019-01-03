@@ -267,11 +267,14 @@ if __name__ == '__main__':
                 iteration = checkpoint['iteration']
                 best_epe = checkpoint['best_EPE']
                 model.load_state_dict(checkpoint['model_state_dict'])
-                optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                try:
+                    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                except KeyError:
+                    pass
                 try:
                     scheduler.state_dict()
                     scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-                except AttributeError:
+                except (AttributeError, KeyError):
                     pass
             except KeyError:
                 try:
