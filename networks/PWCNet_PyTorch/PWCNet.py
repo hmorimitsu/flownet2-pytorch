@@ -16,24 +16,24 @@ class PWCNet(nn.Module):
         self.rgb_max = args.rgb_max
         self.args = args
 
-        self.conv1a  = self.conv(3,   16, kernel_size=3, stride=2)
-        self.conv1aa = self.conv(16,  16, kernel_size=3, stride=1)
-        self.conv1b  = self.conv(16,  16, kernel_size=3, stride=1)
-        self.conv2a  = self.conv(16,  32, kernel_size=3, stride=2)
-        self.conv2aa = self.conv(32,  32, kernel_size=3, stride=1)
-        self.conv2b  = self.conv(32,  32, kernel_size=3, stride=1)
-        self.conv3a  = self.conv(32,  64, kernel_size=3, stride=2)
-        self.conv3aa = self.conv(64,  64, kernel_size=3, stride=1)
-        self.conv3b  = self.conv(64,  64, kernel_size=3, stride=1)
-        self.conv4a  = self.conv(64,  96, kernel_size=3, stride=2)
-        self.conv4aa = self.conv(96,  96, kernel_size=3, stride=1)
-        self.conv4b  = self.conv(96,  96, kernel_size=3, stride=1)
-        self.conv5a  = self.conv(96, 128, kernel_size=3, stride=2)
-        self.conv5aa = self.conv(128,128, kernel_size=3, stride=1)
-        self.conv5b  = self.conv(128,128, kernel_size=3, stride=1)
-        self.conv6aa = self.conv(128,196, kernel_size=3, stride=2)
-        self.conv6a  = self.conv(196,196, kernel_size=3, stride=1)
-        self.conv6b  = self.conv(196,196, kernel_size=3, stride=1)
+        self.conv1a  = self.conv(batchNorm, 3,   16, kernel_size=3, stride=2)
+        self.conv1aa = self.conv(batchNorm, 16,  16, kernel_size=3, stride=1)
+        self.conv1b  = self.conv(batchNorm, 16,  16, kernel_size=3, stride=1)
+        self.conv2a  = self.conv(batchNorm, 16,  32, kernel_size=3, stride=2)
+        self.conv2aa = self.conv(batchNorm, 32,  32, kernel_size=3, stride=1)
+        self.conv2b  = self.conv(batchNorm, 32,  32, kernel_size=3, stride=1)
+        self.conv3a  = self.conv(batchNorm, 32,  64, kernel_size=3, stride=2)
+        self.conv3aa = self.conv(batchNorm, 64,  64, kernel_size=3, stride=1)
+        self.conv3b  = self.conv(batchNorm, 64,  64, kernel_size=3, stride=1)
+        self.conv4a  = self.conv(batchNorm, 64,  96, kernel_size=3, stride=2)
+        self.conv4aa = self.conv(batchNorm, 96,  96, kernel_size=3, stride=1)
+        self.conv4b  = self.conv(batchNorm, 96,  96, kernel_size=3, stride=1)
+        self.conv5a  = self.conv(batchNorm, 96, 128, kernel_size=3, stride=2)
+        self.conv5aa = self.conv(batchNorm, 128,128, kernel_size=3, stride=1)
+        self.conv5b  = self.conv(batchNorm, 128,128, kernel_size=3, stride=1)
+        self.conv6aa = self.conv(batchNorm, 128,196, kernel_size=3, stride=2)
+        self.conv6a  = self.conv(batchNorm, 196,196, kernel_size=3, stride=1)
+        self.conv6b  = self.conv(batchNorm, 196,196, kernel_size=3, stride=1)
 
         self.corr    = Correlation(pad_size=args.pwcnet_md, kernel_size=1, max_displacement=args.pwcnet_md, stride1=1, stride2=1, corr_multiply=1)
         self.leakyRELU = nn.LeakyReLU(0.1)
@@ -42,51 +42,51 @@ class PWCNet(nn.Module):
         dd = np.cumsum([128,128,96,64,32])
 
         od = nd
-        self.conv6_0 = self.conv(od,      128, kernel_size=3, stride=1)
-        self.conv6_1 = self.conv(od+dd[0],128, kernel_size=3, stride=1)
-        self.conv6_2 = self.conv(od+dd[1],96,  kernel_size=3, stride=1)
-        self.conv6_3 = self.conv(od+dd[2],64,  kernel_size=3, stride=1)
-        self.conv6_4 = self.conv(od+dd[3],32,  kernel_size=3, stride=1)        
+        self.conv6_0 = self.conv(batchNorm, od,      128, kernel_size=3, stride=1)
+        self.conv6_1 = self.conv(batchNorm, od+dd[0],128, kernel_size=3, stride=1)
+        self.conv6_2 = self.conv(batchNorm, od+dd[1],96,  kernel_size=3, stride=1)
+        self.conv6_3 = self.conv(batchNorm, od+dd[2],64,  kernel_size=3, stride=1)
+        self.conv6_4 = self.conv(batchNorm, od+dd[3],32,  kernel_size=3, stride=1)        
         self.predict_flow6 = self.predict_flow(od+dd[4])
         self.deconv6 = self.deconv(2, 2, kernel_size=4, stride=2, padding=1) 
         self.upfeat6 = self.deconv(od+dd[4], 2, kernel_size=4, stride=2, padding=1) 
         
         od = nd+128+4
-        self.conv5_0 = self.conv(od,      128, kernel_size=3, stride=1)
-        self.conv5_1 = self.conv(od+dd[0],128, kernel_size=3, stride=1)
-        self.conv5_2 = self.conv(od+dd[1],96,  kernel_size=3, stride=1)
-        self.conv5_3 = self.conv(od+dd[2],64,  kernel_size=3, stride=1)
-        self.conv5_4 = self.conv(od+dd[3],32,  kernel_size=3, stride=1)
+        self.conv5_0 = self.conv(batchNorm, od,      128, kernel_size=3, stride=1)
+        self.conv5_1 = self.conv(batchNorm, od+dd[0],128, kernel_size=3, stride=1)
+        self.conv5_2 = self.conv(batchNorm, od+dd[1],96,  kernel_size=3, stride=1)
+        self.conv5_3 = self.conv(batchNorm, od+dd[2],64,  kernel_size=3, stride=1)
+        self.conv5_4 = self.conv(batchNorm, od+dd[3],32,  kernel_size=3, stride=1)
         self.predict_flow5 = self.predict_flow(od+dd[4]) 
         self.deconv5 = self.deconv(2, 2, kernel_size=4, stride=2, padding=1) 
         self.upfeat5 = self.deconv(od+dd[4], 2, kernel_size=4, stride=2, padding=1) 
         
         od = nd+96+4
-        self.conv4_0 = self.conv(od,      128, kernel_size=3, stride=1)
-        self.conv4_1 = self.conv(od+dd[0],128, kernel_size=3, stride=1)
-        self.conv4_2 = self.conv(od+dd[1],96,  kernel_size=3, stride=1)
-        self.conv4_3 = self.conv(od+dd[2],64,  kernel_size=3, stride=1)
-        self.conv4_4 = self.conv(od+dd[3],32,  kernel_size=3, stride=1)
+        self.conv4_0 = self.conv(batchNorm, od,      128, kernel_size=3, stride=1)
+        self.conv4_1 = self.conv(batchNorm, od+dd[0],128, kernel_size=3, stride=1)
+        self.conv4_2 = self.conv(batchNorm, od+dd[1],96,  kernel_size=3, stride=1)
+        self.conv4_3 = self.conv(batchNorm, od+dd[2],64,  kernel_size=3, stride=1)
+        self.conv4_4 = self.conv(batchNorm, od+dd[3],32,  kernel_size=3, stride=1)
         self.predict_flow4 = self.predict_flow(od+dd[4]) 
         self.deconv4 = self.deconv(2, 2, kernel_size=4, stride=2, padding=1) 
         self.upfeat4 = self.deconv(od+dd[4], 2, kernel_size=4, stride=2, padding=1) 
         
         od = nd+64+4
-        self.conv3_0 = self.conv(od,      128, kernel_size=3, stride=1)
-        self.conv3_1 = self.conv(od+dd[0],128, kernel_size=3, stride=1)
-        self.conv3_2 = self.conv(od+dd[1],96,  kernel_size=3, stride=1)
-        self.conv3_3 = self.conv(od+dd[2],64,  kernel_size=3, stride=1)
-        self.conv3_4 = self.conv(od+dd[3],32,  kernel_size=3, stride=1)
+        self.conv3_0 = self.conv(batchNorm, od,      128, kernel_size=3, stride=1)
+        self.conv3_1 = self.conv(batchNorm, od+dd[0],128, kernel_size=3, stride=1)
+        self.conv3_2 = self.conv(batchNorm, od+dd[1],96,  kernel_size=3, stride=1)
+        self.conv3_3 = self.conv(batchNorm, od+dd[2],64,  kernel_size=3, stride=1)
+        self.conv3_4 = self.conv(batchNorm, od+dd[3],32,  kernel_size=3, stride=1)
         self.predict_flow3 = self.predict_flow(od+dd[4]) 
         self.deconv3 = self.deconv(2, 2, kernel_size=4, stride=2, padding=1) 
         self.upfeat3 = self.deconv(od+dd[4], 2, kernel_size=4, stride=2, padding=1) 
         
         od = nd+32+4
-        self.conv2_0 = self.conv(od,      128, kernel_size=3, stride=1)
-        self.conv2_1 = self.conv(od+dd[0],128, kernel_size=3, stride=1)
-        self.conv2_2 = self.conv(od+dd[1],96,  kernel_size=3, stride=1)
-        self.conv2_3 = self.conv(od+dd[2],64,  kernel_size=3, stride=1)
-        self.conv2_4 = self.conv(od+dd[3],32,  kernel_size=3, stride=1)
+        self.conv2_0 = self.conv(batchNorm, od,      128, kernel_size=3, stride=1)
+        self.conv2_1 = self.conv(batchNorm, od+dd[0],128, kernel_size=3, stride=1)
+        self.conv2_2 = self.conv(batchNorm, od+dd[1],96,  kernel_size=3, stride=1)
+        self.conv2_3 = self.conv(batchNorm, od+dd[2],64,  kernel_size=3, stride=1)
+        self.conv2_4 = self.conv(batchNorm, od+dd[3],32,  kernel_size=3, stride=1)
         self.predict_flow2 = self.predict_flow(od+dd[4])
 
         for m in self.modules():
@@ -96,11 +96,18 @@ class PWCNet(nn.Module):
                     m.bias.data.zero_()
         self.upsample1 = nn.Upsample(scale_factor=4, mode='bilinear')
 
-    def conv(self, in_planes, out_planes, kernel_size=3, stride=1, padding=1, dilation=1):   
-        return nn.Sequential(
-                nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, 
-                            padding=padding, dilation=dilation, bias=True),
-                nn.LeakyReLU(0.1))
+    def conv(self, batchNorm, in_planes, out_planes, kernel_size=3, stride=1, padding=1, dilation=1):
+        if batchNorm:
+            return nn.Sequential(
+                    nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, 
+                                padding=padding, dilation=dilation, bias=False),
+                    nn.BatchNorm2d(out_planes),
+                    nn.LeakyReLU(0.1))
+        else:
+            return nn.Sequential(
+                    nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, 
+                                padding=padding, dilation=dilation, bias=True),
+                    nn.LeakyReLU(0.1))
 
     def deconv(self, in_planes, out_planes, kernel_size=4, stride=2, padding=1):
         return nn.ConvTranspose2d(in_planes, out_planes, kernel_size, stride, padding, bias=True)
@@ -256,12 +263,12 @@ class PWCDCNet(PWCNet):
         nd = (2*args.pwcnet_md+1)**2
         dd = np.cumsum([128,128,96,64,32])
         od = nd+32+4
-        self.dc_conv1 = self.conv(od+dd[4], 128, kernel_size=3, stride=1, padding=1,  dilation=1)
-        self.dc_conv2 = self.conv(128,      128, kernel_size=3, stride=1, padding=2,  dilation=2)
-        self.dc_conv3 = self.conv(128,      128, kernel_size=3, stride=1, padding=4,  dilation=4)
-        self.dc_conv4 = self.conv(128,      96,  kernel_size=3, stride=1, padding=8,  dilation=8)
-        self.dc_conv5 = self.conv(96,       64,  kernel_size=3, stride=1, padding=16, dilation=16)
-        self.dc_conv6 = self.conv(64,       32,  kernel_size=3, stride=1, padding=1,  dilation=1)
+        self.dc_conv1 = self.conv(batchNorm, od+dd[4], 128, kernel_size=3, stride=1, padding=1,  dilation=1)
+        self.dc_conv2 = self.conv(batchNorm, 128,      128, kernel_size=3, stride=1, padding=2,  dilation=2)
+        self.dc_conv3 = self.conv(batchNorm, 128,      128, kernel_size=3, stride=1, padding=4,  dilation=4)
+        self.dc_conv4 = self.conv(batchNorm, 128,      96,  kernel_size=3, stride=1, padding=8,  dilation=8)
+        self.dc_conv5 = self.conv(batchNorm, 96,       64,  kernel_size=3, stride=1, padding=16, dilation=16)
+        self.dc_conv6 = self.conv(batchNorm, 64,       32,  kernel_size=3, stride=1, padding=1,  dilation=1)
         self.dc_conv7 = self.predict_flow(32)
 
         for m in self.modules():
