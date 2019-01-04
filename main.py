@@ -45,6 +45,7 @@ if __name__ == '__main__':
     parser.add_argument('--save', '-s', default='./work', type=str, help='directory for saving')
 
     parser.add_argument('--train_transforms', action='store_true', help='use image augmentation during training')
+    parser.add_argument('--extended_train_transforms', action='store_true', help='use even more image augmentation during training')
 
     parser.add_argument('--validation_frequency', type=int, default=5, help='validate every n epochs')
     parser.add_argument('--validation_n_batches', type=int, default=-1)
@@ -146,6 +147,14 @@ if __name__ == '__main__':
         inf_gpuargs['num_workers'] = args.number_workers
 
         if args.train_transforms:
+            args.training_dataset_transforms = flow_transforms.Compose([
+                flow_transforms.RandomTranslate(10),
+                flow_transforms.RandomRotate(10, 5),
+                flow_transforms.RandomCrop((args.crop_size[0], args.crop_size[1])),
+                flow_transforms.RandomVerticalFlip(),
+                flow_transforms.RandomHorizontalFlip()
+            ])
+        if args.extended_train_transforms:
             args.training_dataset_transforms = flow_transforms.Compose([
                 flow_transforms.RandomGammaColor(0.7, 1.5, 0, 255),
                 flow_transforms.GaussianNoise(10),
