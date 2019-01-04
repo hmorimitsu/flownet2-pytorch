@@ -248,3 +248,79 @@ class RandomColorWarp(object):
         inputs[1] = inputs[1][:,:,random_order]
 
         return inputs, target
+
+
+#
+# New transforms by Henrique Morimitsu
+#
+import cv2
+class RandomScale(object):
+    """ Rescales the inputs and target arrays to a size within a given range.
+    min_scale: smallest scale value to choose
+    max_scale: largest scale value to choose
+    interpolation order: Default: 2 (bilinear)
+    """
+
+    def __init__(self, min_scale, max_scale):
+        self.min_scale = min_scale
+        self.max_scale = max_scale
+
+    def __call__(self, inputs, target):
+        ratio = random.uniform(self.min_scale, self.max_scale)
+        h, w = inputs[0].shape[:2]
+        new_size = (int(ratio * w), int(ratio * h))
+        inputs[0] = cv2.resize(inputs[0], new_size, interpolation=cv2.INTER_LINEAR)
+        inputs[1] = cv2.resize(inputs[1], new_size, interpolation=cv2.INTER_LINEAR)
+        target = cv2.resize(target, new_size, interpolation=cv2.INTER_LINEAR)
+        target *= ratio
+        return inputs, target
+
+
+class GaussianNoise(object):
+    def __init__(self, stdev):
+        self.stdev = stdev
+
+    def __call__(self, inputs, target):
+        noise = np.random.normal(0.0, self.stdev, size=inputs[0].shape).astype(inputs[0].dtype)
+        inputs[0] = inputs[0] + noise
+        noise = np.random.normal(0.0, self.stdev, size=inputs[1].shape).astype(inputs[1].dtype)
+        inputs[1] = inputs[1] + noise
+        return inputs, target
+
+
+class RandomAdditiveColor(object):
+    def __init__(self, stdev):
+        self.stdev = stdev
+
+    def __call__(self, inputs, target):
+        add_factor = random.normalvariate(0.0, self.stdev)
+        inputs[0] = inputs[0] + add_factor
+        inputs[1] = inputs[1] + add_factor
+        return inputs, target
+
+
+class RandomMultiplicativeColor(object):
+    def __init__(self, range_min, range_max):
+        self.range_min = range_min
+        self.range_max = range_max
+
+    def __call__(self, inputs, target):
+        mult_factor = random.uniform(self.range_min, self.range_max)
+        inputs[0] = inputs[0] * mult_factor
+        inputs[1] = inputs[1] * mult_factor
+        return inputs, target
+
+
+class RandomGammaColor(object):
+    def __init__(self, range_min, range_max, min_pixel_value=0, max_pixel_value=255):
+        self.range_min = range_min
+        self.range_max = range_max
+        self.min_pixel_value = float(min_pixel_value)
+        self.max_pixel_value = float(max_pixel_value)
+        self.pixel_range = self.max_pixel_value - self.min_pixel_value
+
+    def __call__(self, inputs, target):
+        gamma = 1.0 / random.uniform(self.range_min, self.range_max)
+        inputs[0] = np.power((inputs[0] - self.min_pixel_value) / self.pixel_range, gamma) * self.pixel_range + self.min_pixel_value
+        inputs[1] = np.power((inputs[1] - self.min_pixel_value) / self.pixel_range, gamma) * self.pixel_range + self.min_pixel_value
+        return inputs, target

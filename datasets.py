@@ -78,8 +78,8 @@ class MpiSintel(data.Dataset):
 
         index = index % self.size
 
-        img1 = frame_utils.read_gen(self.image_list[index][0])
-        img2 = frame_utils.read_gen(self.image_list[index][1])
+        img1 = frame_utils.read_gen(self.image_list[index][0]).astype(np.float32)
+        img2 = frame_utils.read_gen(self.image_list[index][1]).astype(np.float32)
 
         flow = frame_utils.read_gen(self.flow_list[index])
 
@@ -150,8 +150,8 @@ class FlyingChairs(data.Dataset):
   def __getitem__(self, index):
     index = index % self.size
 
-    img1 = frame_utils.read_gen(self.image_list[index][0])
-    img2 = frame_utils.read_gen(self.image_list[index][1])
+    img1 = frame_utils.read_gen(self.image_list[index][0]).astype(np.float32)
+    img2 = frame_utils.read_gen(self.image_list[index][1]).astype(np.float32)
 
     flow = frame_utils.read_gen(self.flow_list[index])
 
@@ -221,8 +221,8 @@ class FlyingThings(data.Dataset):
   def __getitem__(self, index):
     index = index % self.size
 
-    img1 = frame_utils.read_gen(self.image_list[index][0])
-    img2 = frame_utils.read_gen(self.image_list[index][1])
+    img1 = frame_utils.read_gen(self.image_list[index][0]).astype(np.float32)
+    img2 = frame_utils.read_gen(self.image_list[index][1]).astype(np.float32)
 
     flow = frame_utils.read_gen(self.flow_list[index])
 
@@ -293,8 +293,8 @@ class ChairsSDHom(data.Dataset):
   def __getitem__(self, index):
     index = index % self.size
 
-    img1 = frame_utils.read_gen(self.image_list[index][0])
-    img2 = frame_utils.read_gen(self.image_list[index][1])
+    img1 = frame_utils.read_gen(self.image_list[index][0]).astype(np.float32)
+    img2 = frame_utils.read_gen(self.image_list[index][1]).astype(np.float32)
 
     flow = frame_utils.read_gen(self.flow_list[index])
     flow = flow[::-1,:,:]
@@ -359,8 +359,8 @@ class ImagesFromFolder(data.Dataset):
   def __getitem__(self, index):
     index = index % self.size
 
-    img1 = frame_utils.read_gen(self.image_list[index][0])
-    img2 = frame_utils.read_gen(self.image_list[index][1])
+    img1 = frame_utils.read_gen(self.image_list[index][0]).astype(np.float32)
+    img2 = frame_utils.read_gen(self.image_list[index][1]).astype(np.float32)
 
     images = [img1, img2]
     if self.transforms is None:

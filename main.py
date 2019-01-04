@@ -147,8 +147,13 @@ if __name__ == '__main__':
 
         if args.train_transforms:
             args.training_dataset_transforms = flow_transforms.Compose([
+                flow_transforms.RandomGammaColor(0.7, 1.5, 0, 255),
+                flow_transforms.GaussianNoise(10),
+                flow_transforms.RandomAdditiveColor(50),
+                flow_transforms.RandomMultiplicativeColor(0.5, 2.0),
                 flow_transforms.RandomTranslate(10),
                 flow_transforms.RandomRotate(10, 5),
+                flow_transforms.RandomScale(0.9, 2.0),
                 flow_transforms.RandomCrop((args.crop_size[0], args.crop_size[1])),
                 flow_transforms.RandomVerticalFlip(),
                 flow_transforms.RandomHorizontalFlip()
