@@ -93,27 +93,23 @@ class MultiScale(nn.Module):
         self.loss_labels = ['MultiScale-'+self.l_type, 'EPE']
 
     def forward(self, output, target):
-        lossvalue = 0
-        epevalue = 0
-
         if type(output) is tuple:
+            lossvalue = 0
             target = self.div_flow * target
             for i, output_ in enumerate(output):
                 target_ = self.multiScales[i](target)
-                epe = EPE(output_, target_)
                 loss = self.loss(output_, target_)
                 if self.args.cuda:
-                    epe = epe.to('cuda:0')
                     loss = loss.to('cuda:0')
-                epevalue += self.loss_weights[i]*epe
                 lossvalue += self.loss_weights[i]*loss
-            return [lossvalue, epevalue]
+                if i == 0:
+                    epevalue = EPE(output_ / self.div_flow, target_ / self.div_flow)
+                    if self.args.cuda:
+                        epevalue = epevalue.to('cuda:0')
         else:
-            epe = EPE(output, target)
-            loss = self.loss(output, target)
+            epevalue = EPE(output, target)
+            lossvalue = self.loss(output, target)
             if self.args.cuda:
-                epe = epe.to('cuda:0')
-                loss = loss.to('cuda:0')
-            epevalue += epe
-            lossvalue += loss
-            return  [lossvalue, epevalue]
+                epevalue = epevalue.to('cuda:0')
+                lossvalue = lossvalue.to('cuda:0')
+        return  [lossvalue, epevalue]
