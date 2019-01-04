@@ -354,10 +354,15 @@ if __name__ == '__main__':
                 max_epe = torch.max(epe_img)
                 if max_epe == 0:
                     max_epe = torch.ones(1)
-                epe_img = epe_img / max_epe
-                epe_img = (255 * epe_img).type(torch.uint8)
-                epe_img = torch.stack((epe_img, epe_img, epe_img), dim=0)
-                imgs.append(epe_img)
+                normalized_epe_img = epe_img / max_epe
+                normalized_epe_img = (255 * normalized_epe_img).type(torch.uint8)
+                normalized_epe_img = torch.stack((normalized_epe_img, normalized_epe_img, normalized_epe_img), dim=0)
+                imgs.append(normalized_epe_img)
+
+                saturated_epe_img = torch.min(epe_img, 5.0 * torch.ones_like(epe_img))
+                saturated_epe_img = (51 * saturated_epe_img).type(torch.uint8)
+                saturated_epe_img = torch.stack((saturated_epe_img, saturated_epe_img, saturated_epe_img), dim=0)
+                imgs.append(saturated_epe_img)
             return imgs
 
         max_iters = min(len(data_loader),
@@ -390,7 +395,7 @@ if __name__ == '__main__':
 
             if is_validate and args.validation_log_images and batch_idx == (max_iters - 1):
                 imgs = convert_flow_to_image(flow_converter, flows_viz)
-                imgs = torchvision_utils.make_grid(imgs, nrow=3, normalize=False, scale_each=False)
+                imgs = torchvision_utils.make_grid(imgs, nrow=4, normalize=False, scale_each=False)
                 logger.add_image('target/predicted flows', imgs, global_iteration)
 
             # gather loss_labels, direct return leads to recursion limit error as it looks for variables to gather'
