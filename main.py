@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
+from torchvision import utils as torchvision_utils
 from tensorboardX import SummaryWriter
 
 import argparse, os, sys, subprocess
@@ -15,6 +16,8 @@ from os.path import *
 
 import models, losses, datasets
 from utils import flow_utils, tools
+from utils.flow2image import f2i
+from utils.FlowNetPytorch import flow_transforms
 
 # fp32 copy of parameters for update
 global param_copy
@@ -25,12 +28,13 @@ if __name__ == '__main__':
     parser.add_argument('--start_epoch', type=int, default=1)
     parser.add_argument('--total_epochs', type=int, default=10000)
     parser.add_argument('--batch_size', '-b', type=int, default=8, help="Batch size")
-    parser.add_argument('--train_n_batches', type=int, default = -1, help='Number of min-batches per epoch. If < 0, it will be determined by training_dataloader')
-    parser.add_argument('--crop_size', type=int, nargs='+', default = [256, 256], help="Spatial dimension to crop training samples for training")
+    parser.add_argument('--train_n_batches', type=int, default=-1, help='Number of min-batches per epoch. If < 0, it will be determined by training_dataloader')
+    parser.add_argument('--crop_size', type=int, nargs='+', default=[256, 256], help="Spatial dimension to crop training samples for training")
     parser.add_argument('--gradient_clip', type=float, default=None)
-    parser.add_argument('--schedule_lr_frequency', type=int, default=0, help='in number of iterations (0 for no schedule)')
-    parser.add_argument('--schedule_lr_fraction', type=float, default=10)
-    parser.add_argument("--rgb_max", type=float, default = 255.)
+    parser.add_argument("--rgb_max", type=float, default=255.)
+
+    parser.add_argument("--weight_decay", type=float, default=4e-4)
+    parser.add_argument("--bias_decay", type=float, default=0.0)
 
     parser.add_argument('--number_workers', '-nw', '--num_workers', type=int, default=8)
     parser.add_argument('--number_gpus', '-ng', type=int, default=-1, help='number of GPUs to use')
@@ -40,8 +44,12 @@ if __name__ == '__main__':
     parser.add_argument('--name', default='run', type=str, help='a name to append to the save directory')
     parser.add_argument('--save', '-s', default='./work', type=str, help='directory for saving')
 
+    parser.add_argument('--train_transforms', action='store_true', help='use image augmentation during training')
+    parser.add_argument('--extended_train_transforms', action='store_true', help='use even more image augmentation during training')
+
     parser.add_argument('--validation_frequency', type=int, default=5, help='validate every n epochs')
     parser.add_argument('--validation_n_batches', type=int, default=-1)
+    parser.add_argument('--validation_log_images', action='store_true')
     parser.add_argument('--render_validation', action='store_true', help='run inference (save flows to file) and every validation_frequency epoch')
 
     parser.add_argument('--inference', action='store_true')
@@ -59,11 +67,17 @@ if __name__ == '__main__':
     parser.add_argument('--fp16', action='store_true', help='Run model in pseudo-fp16 mode (fp16 storage fp32 math).')
     parser.add_argument('--fp16_scale', type=float, default=1024., help='Loss scaling, positive power of 2 values can improve fp16 convergence.')
 
+    parser.add_argument("--pwcnet_md", type=int, default=4)
+
+    parser.add_argument("--scheduler_milestones", type=int, nargs='+', default=[300000, 400000, 500000])
+
     tools.add_arguments_for_module(parser, models, argument_for_class='model', default='FlowNet2')
 
     tools.add_arguments_for_module(parser, losses, argument_for_class='loss', default='L1Loss')
 
     tools.add_arguments_for_module(parser, torch.optim, argument_for_class='optimizer', default='Adam', skip_params=['params'])
+
+    tools.add_arguments_for_module(parser, torch.optim.lr_scheduler, argument_for_class='scheduler', default='MultiStepLR')
     
     tools.add_arguments_for_module(parser, datasets, argument_for_class='training_dataset', default='MpiSintelFinal', 
                                     skip_params=['is_cropped'],
@@ -100,6 +114,7 @@ if __name__ == '__main__':
         args.model_class = tools.module_to_dict(models)[args.model]
         args.optimizer_class = tools.module_to_dict(torch.optim)[args.optimizer]
         args.loss_class = tools.module_to_dict(losses)[args.loss]
+        args.scheduler_class = tools.module_to_dict(torch.optim.lr_scheduler)[args.scheduler]
 
         args.training_dataset_class = tools.module_to_dict(datasets)[args.training_dataset]
         args.validation_dataset_class = tools.module_to_dict(datasets)[args.validation_dataset]
@@ -112,11 +127,7 @@ if __name__ == '__main__':
         # dict to collect activation gradients (for training debug purpose)
         args.grads = {}
 
-        if args.inference:
-            args.skip_validation = True
-            args.skip_training = True
-            args.total_epochs = 1
-            args.inference_dir = "{}/inference".format(args.save)
+    args.scheduler_gamma = 0.5
 
     print('Source Code')
     print(('  Current Git Hash: {}\n'.format(args.current_hash)))
@@ -134,6 +145,28 @@ if __name__ == '__main__':
                    'drop_last' : True} if args.cuda else {}
         inf_gpuargs = gpuargs.copy()
         inf_gpuargs['num_workers'] = args.number_workers
+
+        if args.train_transforms:
+            args.training_dataset_transforms = flow_transforms.Compose([
+                flow_transforms.RandomTranslate(10),
+                flow_transforms.RandomRotate(10, 5),
+                flow_transforms.RandomCrop((args.crop_size[0], args.crop_size[1])),
+                flow_transforms.RandomVerticalFlip(),
+                flow_transforms.RandomHorizontalFlip()
+            ])
+        if args.extended_train_transforms:
+            args.training_dataset_transforms = flow_transforms.Compose([
+                flow_transforms.RandomGammaColor(0.7, 1.5, 0, 255),
+                flow_transforms.GaussianNoise(10),
+                flow_transforms.RandomAdditiveColor(50),
+                flow_transforms.RandomMultiplicativeColor(0.5, 2.0),
+                flow_transforms.RandomTranslate(10),
+                flow_transforms.RandomRotate(10, 5),
+                flow_transforms.RandomScale(0.9, 2.0),
+                flow_transforms.RandomCrop((args.crop_size[0], args.crop_size[1])),
+                flow_transforms.RandomVerticalFlip(),
+                flow_transforms.RandomHorizontalFlip()
+            ])
 
         if exists(args.training_dataset_root):
             train_dataset = args.training_dataset_class(args, True, **tools.kwargs_from_args(args, 'training_dataset'))
@@ -184,7 +217,7 @@ if __name__ == '__main__':
         # assing to cuda or wrap with dataparallel, model and loss 
         if args.cuda and (args.number_gpus > 0) and args.fp16:
             block.log('Parallelizing')
-            model_and_loss = nn.parallel.DataParallel(model_and_loss, device_ids=list(range(args.number_gpus)))
+            model_and_loss = nn.DataParallel(model_and_loss, device_ids=list(range(args.number_gpus)))
 
             block.log('Initializing CUDA')
             model_and_loss = model_and_loss.cuda().half()
@@ -195,29 +228,12 @@ if __name__ == '__main__':
             block.log('Initializing CUDA')
             model_and_loss = model_and_loss.cuda()
             block.log('Parallelizing')
-            model_and_loss = nn.parallel.DataParallel(model_and_loss, device_ids=list(range(args.number_gpus)))
+            model_and_loss = nn.DataParallel(model_and_loss, device_ids=list(range(args.number_gpus)))
             torch.cuda.manual_seed(args.seed) 
 
         else:
             block.log('CUDA not being used')
             torch.manual_seed(args.seed)
-
-        # Load weights if needed, otherwise randomly initialize
-        if args.resume and os.path.isfile(args.resume):
-            block.log("Loading checkpoint '{}'".format(args.resume))
-            checkpoint = torch.load(args.resume)
-            if not args.inference:
-                args.start_epoch = checkpoint['epoch']
-            best_err = checkpoint['best_EPE']
-            model_and_loss.module.model.load_state_dict(checkpoint['state_dict'])
-            block.log("Loaded checkpoint '{}' (at epoch {})".format(args.resume, checkpoint['epoch']))
-
-        elif args.resume and args.inference:
-            block.log("No checkpoint found at '{}'".format(args.resume))
-            quit()
-
-        else:
-            block.log("Random initialization")
 
         block.log("Initializing save directory: {}".format(args.save))
         if not os.path.exists(args.save):
@@ -230,19 +246,104 @@ if __name__ == '__main__':
     with tools.TimerBlock("Initializing {} Optimizer".format(args.optimizer)) as block:
         kwargs = tools.kwargs_from_args(args, 'optimizer')
         if args.fp16:
-            optimizer = args.optimizer_class([p for p in param_copy if p.requires_grad], **kwargs)
+            params_groups = [
+                {'params': [param_copy[i] for i, p in enumerate(model_and_loss.named_parameters()) if 'weight' in p[0] and p[1].requires_grad],
+                 'weight_decay': args.weight_decay},
+                {'params': [param_copy[i] for i, p in enumerate(model_and_loss.named_parameters()) if 'bias' in p[0] and p[1].requires_grad],
+                 'weight_decay': args.bias_decay}]
+            optimizer = args.optimizer_class(params_groups, **kwargs)
         else:
-            optimizer = args.optimizer_class([p for p in model_and_loss.parameters() if p.requires_grad], **kwargs)
-        for param, default in list(kwargs.items()):
-            block.log("{} = {} ({})".format(param, default, type(default)))
+            params_groups = [
+                {'params': [p[1] for p in model_and_loss.named_parameters() if 'weight' in p[0] and p[1].requires_grad],
+                 'weight_decay': args.weight_decay},
+                {'params': [p[1] for p in model_and_loss.named_parameters() if 'bias' in p[0] and p[1].requires_grad],
+                 'weight_decay': args.bias_decay}]
+            optimizer = args.optimizer_class(params_groups, **kwargs)
+        # for param, default in list(kwargs.items()):
+        #     block.log("{} = {} ({})".format(param, default, type(default)))
+
+    # Dynamically load the scheduler with parameters passed in via "--scheduler_[param]=[value]" arguments 
+    with tools.TimerBlock("Initializing {} LR Scheduler".format(args.scheduler)) as block:
+        kwargs = tools.kwargs_from_args(args, 'scheduler')
+        scheduler = args.scheduler_class(optimizer, **kwargs)
+        # for param, default in list(kwargs.items()):
+        #     block.log("{} = {} ({})".format(param, default, type(default)))
+
+    with tools.TimerBlock("Loading {} checkpoint".format(args.model)) as block:
+        def load_checkpoint(model, optimizer, scheduler, save_path):
+            epoch = 0
+            iteration = 0
+            best_epe = 99999.9
+            checkpoint = torch.load(save_path)
+            try:
+                # Models saved by this code
+                epoch = checkpoint['epoch']
+                iteration = checkpoint['iteration']
+                best_epe = checkpoint['best_EPE']
+                model.load_state_dict(checkpoint['model_state_dict'])
+                try:
+                    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                except KeyError:
+                    pass
+                try:
+                    scheduler.state_dict()
+                    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+                except (AttributeError, KeyError):
+                    pass
+            except KeyError:
+                try:
+                    # FlowNet2 pretrained models
+                    model.load_state_dict(checkpoint['state_dict'])
+                except KeyError:
+                    # PWCDCNet pretrained model
+                    pretrained_dict = checkpoint
+                    model_dict = model_and_loss.module.model.state_dict()
+                    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+                    model_dict.update(pretrained_dict)
+                    model.load_state_dict(pretrained_dict)
+                
+            return model, optimizer, scheduler, epoch, iteration, best_epe
+
+        # Load weights if needed, otherwise randomly initialize
+        if args.resume and os.path.isfile(args.resume):
+            model_and_loss.module.model, optimizer, scheduler, args.start_epoch, args.start_iteration, best_err = load_checkpoint(model_and_loss.module.model, optimizer, scheduler, args.resume)
+            block.log("Loaded checkpoint '{}'".format(args.resume))
+            block.log("Start epoch {}".format(args.start_epoch))
+            block.log("Best EPE {}".format(best_err))
+
+        elif args.resume and args.inference:
+            block.log("No checkpoint found at '{}'".format(args.resume))
+            quit()
+
+        else:
+            args.start_iteration = 0
+            block.log("Random initialization")
+
+    with tools.TimerBlock("Optimizer and Scheduler states") as block:
+        block.log("Optimizer state:")
+        block.log(optimizer)
+        try:
+            ss = scheduler.state_dict()
+            block.log("LR Scheduler state:")
+            block.log(ss)
+        except AttributeError:
+            pass
+
+    if args.inference:
+        args.skip_validation = True
+        args.skip_training = True
+        args.start_epoch = 1
+        args.total_epochs = 1
+        args.inference_dir = "{}/inference".format(args.save)
 
     # Log all arguments to file
     for argument, value in sorted(vars(args).items()):
         block.log2file(args.log_file, '{}: {}'.format(argument, value))
 
     # Reusable function for training and validataion
-    def train(args, epoch, start_iteration, data_loader, model, optimizer, logger, is_validate=False, offset=0):
-        statistics = []
+    def train(args, epoch, start_iteration, data_loader, model, optimizer, scheduler, logger, is_validate=False, offset=0, max_flows_to_show=8):
+        running_statistics = None  # Initialize below when the first losses are collected
+        all_losses = None  # Initialize below when the first losses are collected
         total_loss = 0
 
         if is_validate:
@@ -256,19 +357,60 @@ if __name__ == '__main__':
             args.train_n_batches = np.inf if args.train_n_batches < 0 else args.train_n_batches
             progress = tqdm(tools.IteratorTimer(data_loader), ncols=120, total=np.minimum(len(data_loader), args.train_n_batches), smoothing=.9, miniters=1, leave=True, position=offset, desc=title)
 
+        def convert_flow_to_image(flow_converter, flows_viz):
+            imgs = []
+            for flow_pair in flows_viz:
+                for flow in flow_pair:
+                    flow = flow.numpy().transpose((1, 2, 0))
+                    img = flow_converter._flowToColor(flow)
+                    imgs.append(torch.from_numpy(img.transpose((2, 0, 1))))
+                epe_img = torch.sqrt(torch.sum(torch.pow(flow_pair[0] - flow_pair[1], 2), dim=0))
+                max_epe = torch.max(epe_img)
+                if max_epe == 0:
+                    max_epe = torch.ones(1)
+                normalized_epe_img = epe_img / max_epe
+                normalized_epe_img = (255 * normalized_epe_img).type(torch.uint8)
+                normalized_epe_img = torch.stack((normalized_epe_img, normalized_epe_img, normalized_epe_img), dim=0)
+                imgs.append(normalized_epe_img)
+
+                saturated_epe_img = torch.min(epe_img, 5.0 * torch.ones_like(epe_img))
+                saturated_epe_img = (51 * saturated_epe_img).type(torch.uint8)
+                saturated_epe_img = torch.stack((saturated_epe_img, saturated_epe_img, saturated_epe_img), dim=0)
+                imgs.append(saturated_epe_img)
+            return imgs
+
+        max_iters = min(len(data_loader),
+                        (args.validation_n_batches if (is_validate and args.validation_n_batches > 0) else len(data_loader)),
+                        (args.train_n_batches if (not is_validate and args.train_n_batches > 0) else len(data_loader)))
+
+        if is_validate:
+            flow_converter = f2i.Flow()
+            collect_flow_interval = int(np.ceil(float(max_iters) / max_flows_to_show))
+            flows_viz = []
+
+        last_log_batch_idx = 0
         last_log_time = progress._time()
         for batch_idx, (data, target) in enumerate(progress):
+            global_iteration = start_iteration + batch_idx
 
             data, target = [Variable(d) for d in data], [Variable(t) for t in target]
             if args.cuda and args.number_gpus == 1:
                 data, target = [d.cuda(async=True) for d in data], [t.cuda(async=True) for t in target]
 
             optimizer.zero_grad() if not is_validate else None
-            losses = model(data[0], target[0])
-            losses = [torch.mean(loss_value) for loss_value in losses] 
+            losses, output = model(data[0], target[0], inference=True)
+            losses = [torch.mean(loss_value) for loss_value in losses]
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.item()
             loss_values = [v.item() for v in losses]
+
+            if is_validate and batch_idx % collect_flow_interval == 0:
+                flows_viz.append((target[0][0].detach().cpu(), output[0].detach().cpu()))
+
+            if is_validate and args.validation_log_images and batch_idx == (max_iters - 1):
+                imgs = convert_flow_to_image(flow_converter, flows_viz)
+                imgs = torchvision_utils.make_grid(imgs, nrow=4, normalize=False, scale_each=False)
+                logger.add_image('target/predicted flows', imgs, global_iteration)
 
             # gather loss_labels, direct return leads to recursion limit error as it looks for variables to gather'
             loss_labels = list(model.module.loss.loss_labels)
@@ -295,37 +437,36 @@ if __name__ == '__main__':
                 optimizer.step()
 
             # Update hyperparameters if needed
-            global_iteration = start_iteration + batch_idx
             if not is_validate:
-                tools.update_hyperparameter_schedule(args, epoch, global_iteration, optimizer)
+                scheduler.step()
                 loss_labels.append('lr')
                 loss_values.append(optimizer.param_groups[0]['lr'])
 
             loss_labels.append('load')
             loss_values.append(progress.iterable.last_duration)
 
-            # Print out statistics
-            statistics.append(loss_values)
+            if running_statistics is None:
+                running_statistics = np.array(loss_values)
+                all_losses = np.zeros((len(data_loader), len(loss_values)), np.float32)
+            else:
+                running_statistics += np.array(loss_values)
+            all_losses[batch_idx] = loss_values.copy()
             title = '{} Epoch {}'.format('Validating' if is_validate else 'Training', epoch)
 
-            progress.set_description(title + ' ' + tools.format_dictionary_of_losses(loss_labels, statistics[-1]))
+            progress.set_description(title + ' ' + tools.format_dictionary_of_losses(loss_labels, running_statistics / (batch_idx + 1)))
 
             if ((((global_iteration + 1) % args.log_frequency) == 0 and not is_validate) or
-                (is_validate and batch_idx == args.validation_n_batches - 1)):
+                    (batch_idx == max_iters - 1)):
 
                 global_iteration = global_iteration if not is_validate else start_iteration
 
-                logger.add_scalar('batch logs per second', len(statistics) / (progress._time() - last_log_time), global_iteration)
+                logger.add_scalar('batch logs per second', (batch_idx - last_log_batch_idx) / (progress._time() - last_log_time), global_iteration)
                 last_log_time = progress._time()
-
-                all_losses = np.array(statistics)
+                last_log_batch_idx = batch_idx
 
                 for i, key in enumerate(loss_labels):
-                    logger.add_scalar('average batch ' + str(key), all_losses[:, i].mean(), global_iteration)
-                    logger.add_histogram(str(key), all_losses[:, i], global_iteration)
-
-            # Reset Summary
-            statistics = []
+                    logger.add_scalar('average batch ' + str(key), all_losses[:batch_idx + 1, i].mean(), global_iteration)
+                    logger.add_histogram(str(key), all_losses[:batch_idx + 1, i], global_iteration)
 
             if ( is_validate and ( batch_idx == args.validation_n_batches) ):
                 break
@@ -365,7 +506,7 @@ if __name__ == '__main__':
             # depending on the type of loss norm passed in
             with torch.no_grad():
                 losses, output = model(data[0], target[0], inference=True)
-
+                
             losses = [torch.mean(loss_value) for loss_value in losses] 
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.item()
@@ -391,20 +532,46 @@ if __name__ == '__main__':
 
         return
 
+    def generate_checkpoint_state(model, optimizer, scheduler, arch, epoch, iteration, best_epe, is_training):
+        state = {
+            'arch' : arch,
+            'epoch': epoch,
+            'iteration': iteration,
+            'best_EPE': best_epe,
+            'model_state_dict': model.state_dict()
+        }
+        if is_training:
+            state['optimizer_state_dict'] = optimizer.state_dict()
+            try:
+                scheduler.state_dict()
+                state['scheduler_state_dict'] = scheduler.state_dict()
+            except AttributeError:
+                pass
+        return state
+
     # Primary epoch loop
     best_err = 1e8
     progress = tqdm(list(range(args.start_epoch, args.total_epochs + 1)), miniters=1, ncols=100, desc='Overall Progress', leave=True, position=0)
     offset = 1
     last_epoch_time = progress._time()
-    global_iteration = 0
+    global_iteration = args.start_iteration
 
     for epoch in progress:
-        if args.inference or (args.render_validation and ((epoch - 1) % args.validation_frequency) == 0):
-            stats = inference(args=args, epoch=epoch - 1, data_loader=inference_loader, model=model_and_loss, offset=offset)
+        if not args.skip_training:
+            train_loss, iterations = train(args=args, epoch=epoch, start_iteration=global_iteration, data_loader=train_loader, model=model_and_loss, optimizer=optimizer, scheduler=scheduler, logger=train_logger, offset=offset)
+            global_iteration += iterations
             offset += 1
 
-        if not args.skip_validation and ((epoch - 1) % args.validation_frequency) == 0:
-            validation_loss, _ = train(args=args, epoch=epoch - 1, start_iteration=global_iteration, data_loader=validation_loader, model=model_and_loss, optimizer=optimizer, logger=validation_logger, is_validate=True, offset=offset)
+            # save checkpoint after every validation_frequency number of epochs
+            if ((epoch - 1) % args.validation_frequency) == 0:
+                checkpoint_progress = tqdm(ncols=100, desc='Saving Checkpoint', position=offset)
+                tools.save_checkpoint(generate_checkpoint_state(model_and_loss.module.model, optimizer, scheduler, args.model, epoch+1, global_iteration, train_loss, True), 
+                                      False, args.save, args.model, filename = 'train-checkpoint.pth.tar')
+                checkpoint_progress.update(1)
+                checkpoint_progress.close()
+
+        if not args.skip_validation and (epoch % args.validation_frequency) == 0:
+            validation_loss, _ = train(args=args, epoch=epoch, start_iteration=global_iteration, data_loader=validation_loader, model=model_and_loss, optimizer=optimizer, scheduler=scheduler, logger=validation_logger, is_validate=True, offset=offset)
             offset += 1
 
             is_best = False
@@ -413,31 +580,15 @@ if __name__ == '__main__':
                 is_best = True
 
             checkpoint_progress = tqdm(ncols=100, desc='Saving Checkpoint', position=offset)
-            tools.save_checkpoint({   'arch' : args.model,
-                                      'epoch': epoch,
-                                      'state_dict': model_and_loss.module.model.state_dict(),
-                                      'best_EPE': best_err}, 
-                                      is_best, args.save, args.model)
+            tools.save_checkpoint(generate_checkpoint_state(model_and_loss.module.model, optimizer, scheduler, args.model, epoch+1, global_iteration, best_err, False), 
+                                  is_best, args.save, args.model)
             checkpoint_progress.update(1)
             checkpoint_progress.close()
             offset += 1
 
-        if not args.skip_training:
-            train_loss, iterations = train(args=args, epoch=epoch, start_iteration=global_iteration, data_loader=train_loader, model=model_and_loss, optimizer=optimizer, logger=train_logger, offset=offset)
-            global_iteration += iterations
+        if args.inference or (args.render_validation and (epoch % args.validation_frequency) == 0):
+            stats = inference(args=args, epoch=epoch, data_loader=inference_loader, model=model_and_loss, offset=offset)
             offset += 1
-
-            # save checkpoint after every validation_frequency number of epochs
-            if ((epoch - 1) % args.validation_frequency) == 0:
-                checkpoint_progress = tqdm(ncols=100, desc='Saving Checkpoint', position=offset)
-                tools.save_checkpoint({   'arch' : args.model,
-                                          'epoch': epoch,
-                                          'state_dict': model_and_loss.module.model.state_dict(),
-                                          'best_EPE': train_loss}, 
-                                          False, args.save, args.model, filename = 'train-checkpoint.pth.tar')
-                checkpoint_progress.update(1)
-                checkpoint_progress.close()
-
 
         train_logger.add_scalar('seconds per epoch', progress._time() - last_epoch_time, epoch)
         last_epoch_time = progress._time()

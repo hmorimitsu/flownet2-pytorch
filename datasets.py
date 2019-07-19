@@ -28,12 +28,13 @@ class StaticCenterCrop(object):
         return img[(self.h-self.th)//2:(self.h+self.th)//2, (self.w-self.tw)//2:(self.w+self.tw)//2,:]
 
 class MpiSintel(data.Dataset):
-    def __init__(self, args, is_cropped = False, root = '', dstype = 'clean', replicates = 1):
+    def __init__(self, args, is_cropped = False, root = '', dstype = 'clean', replicates = 1, transforms = None):
         self.args = args
         self.is_cropped = is_cropped
         self.crop_size = args.crop_size
         self.render_size = args.inference_size
         self.replicates = replicates
+        self.transforms = transforms
 
         flow_root = join(root, 'flow')
         image_root = join(root, dstype)
@@ -77,20 +78,22 @@ class MpiSintel(data.Dataset):
 
         index = index % self.size
 
-        img1 = frame_utils.read_gen(self.image_list[index][0])
-        img2 = frame_utils.read_gen(self.image_list[index][1])
+        img1 = frame_utils.read_gen(self.image_list[index][0]).astype(np.float32)
+        img2 = frame_utils.read_gen(self.image_list[index][1]).astype(np.float32)
 
         flow = frame_utils.read_gen(self.flow_list[index])
 
         images = [img1, img2]
-        image_size = img1.shape[:2]
-
-        if self.is_cropped:
-            cropper = StaticRandomCrop(image_size, self.crop_size)
+        if self.transforms is None:
+            image_size = img1.shape[:2]
+            if self.is_cropped:
+                cropper = StaticRandomCrop(image_size, self.crop_size)
+            else:
+                cropper = StaticCenterCrop(image_size, self.render_size)
+            images = list(map(cropper, images))
+            flow = cropper(flow)
         else:
-            cropper = StaticCenterCrop(image_size, self.render_size)
-        images = list(map(cropper, images))
-        flow = cropper(flow)
+            images, flow = self.transforms(images, flow)
 
         images = np.array(images).transpose(3,0,1,2)
         flow = flow.transpose(2,0,1)
@@ -104,20 +107,21 @@ class MpiSintel(data.Dataset):
         return self.size * self.replicates
 
 class MpiSintelClean(MpiSintel):
-    def __init__(self, args, is_cropped = False, root = '', replicates = 1):
-        super(MpiSintelClean, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'clean', replicates = replicates)
+    def __init__(self, args, is_cropped = False, root = '', replicates = 1, transforms = None):
+        super(MpiSintelClean, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'clean', replicates = replicates, transforms = transforms)
 
 class MpiSintelFinal(MpiSintel):
-    def __init__(self, args, is_cropped = False, root = '', replicates = 1):
-        super(MpiSintelFinal, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'final', replicates = replicates)
+    def __init__(self, args, is_cropped = False, root = '', replicates = 1, transforms = None):
+        super(MpiSintelFinal, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'final', replicates = replicates, transforms = transforms)
 
 class FlyingChairs(data.Dataset):
-  def __init__(self, args, is_cropped, root = '/path/to/FlyingChairs_release/data', replicates = 1):
+  def __init__(self, args, is_cropped, root = '/path/to/FlyingChairs_release/data', replicates = 1, transforms = None):
     self.args = args
     self.is_cropped = is_cropped
     self.crop_size = args.crop_size
     self.render_size = args.inference_size
     self.replicates = replicates
+    self.transforms = transforms
 
     images = sorted( glob( join(root, '*.ppm') ) )
 
@@ -146,19 +150,22 @@ class FlyingChairs(data.Dataset):
   def __getitem__(self, index):
     index = index % self.size
 
-    img1 = frame_utils.read_gen(self.image_list[index][0])
-    img2 = frame_utils.read_gen(self.image_list[index][1])
+    img1 = frame_utils.read_gen(self.image_list[index][0]).astype(np.float32)
+    img2 = frame_utils.read_gen(self.image_list[index][1]).astype(np.float32)
 
     flow = frame_utils.read_gen(self.flow_list[index])
 
     images = [img1, img2]
-    image_size = img1.shape[:2]
-    if self.is_cropped:
-        cropper = StaticRandomCrop(image_size, self.crop_size)
+    if self.transforms is None:
+        image_size = img1.shape[:2]
+        if self.is_cropped:
+            cropper = StaticRandomCrop(image_size, self.crop_size)
+        else:
+            cropper = StaticCenterCrop(image_size, self.render_size)
+        images = list(map(cropper, images))
+        flow = cropper(flow)
     else:
-        cropper = StaticCenterCrop(image_size, self.render_size)
-    images = list(map(cropper, images))
-    flow = cropper(flow)
+        images, flow = self.transforms(images, flow)
 
 
     images = np.array(images).transpose(3,0,1,2)
@@ -173,12 +180,13 @@ class FlyingChairs(data.Dataset):
     return self.size * self.replicates
 
 class FlyingThings(data.Dataset):
-  def __init__(self, args, is_cropped, root = '/path/to/flyingthings3d', dstype = 'frames_cleanpass', replicates = 1):
+  def __init__(self, args, is_cropped, root = '/path/to/flyingthings3d', dstype = 'frames_cleanpass', replicates = 1, transforms = None):
     self.args = args
     self.is_cropped = is_cropped
     self.crop_size = args.crop_size
     self.render_size = args.inference_size
     self.replicates = replicates
+    self.transforms = transforms
 
     image_dirs = sorted(glob(join(root, dstype, 'TRAIN/*/*')))
     image_dirs = sorted([join(f, 'left') for f in image_dirs] + [join(f, 'right') for f in image_dirs])
@@ -213,20 +221,22 @@ class FlyingThings(data.Dataset):
   def __getitem__(self, index):
     index = index % self.size
 
-    img1 = frame_utils.read_gen(self.image_list[index][0])
-    img2 = frame_utils.read_gen(self.image_list[index][1])
+    img1 = frame_utils.read_gen(self.image_list[index][0]).astype(np.float32)
+    img2 = frame_utils.read_gen(self.image_list[index][1]).astype(np.float32)
 
     flow = frame_utils.read_gen(self.flow_list[index])
 
     images = [img1, img2]
-    image_size = img1.shape[:2]
-    if self.is_cropped:
-        cropper = StaticRandomCrop(image_size, self.crop_size)
+    if self.transforms is None:
+        image_size = img1.shape[:2]
+        if self.is_cropped:
+            cropper = StaticRandomCrop(image_size, self.crop_size)
+        else:
+            cropper = StaticCenterCrop(image_size, self.render_size)
+        images = list(map(cropper, images))
+        flow = cropper(flow)
     else:
-        cropper = StaticCenterCrop(image_size, self.render_size)
-    images = list(map(cropper, images))
-    flow = cropper(flow)
-
+        images, flow = self.transforms(images, flow)
 
     images = np.array(images).transpose(3,0,1,2)
     flow = flow.transpose(2,0,1)
@@ -240,20 +250,21 @@ class FlyingThings(data.Dataset):
     return self.size * self.replicates
 
 class FlyingThingsClean(FlyingThings):
-    def __init__(self, args, is_cropped = False, root = '', replicates = 1):
-        super(FlyingThingsClean, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'frames_cleanpass', replicates = replicates)
+    def __init__(self, args, is_cropped = False, root = '', replicates = 1, transforms = None):
+        super(FlyingThingsClean, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'frames_cleanpass', replicates = replicates, transforms = transforms)
 
 class FlyingThingsFinal(FlyingThings):
-    def __init__(self, args, is_cropped = False, root = '', replicates = 1):
-        super(FlyingThingsFinal, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'frames_finalpass', replicates = replicates)
+    def __init__(self, args, is_cropped = False, root = '', replicates = 1, transforms = None):
+        super(FlyingThingsFinal, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'frames_finalpass', replicates = replicates, transforms = transforms)
 
 class ChairsSDHom(data.Dataset):
-  def __init__(self, args, is_cropped, root = '/path/to/chairssdhom/data', dstype = 'train', replicates = 1):
+  def __init__(self, args, is_cropped, root = '/path/to/chairssdhom/data', dstype = 'train', replicates = 1, transforms = None):
     self.args = args
     self.is_cropped = is_cropped
     self.crop_size = args.crop_size
     self.render_size = args.inference_size
     self.replicates = replicates
+    self.transforms = transforms
 
     image1 = sorted( glob( join(root, dstype, 't0/*.png') ) )
     image2 = sorted( glob( join(root, dstype, 't1/*.png') ) )
@@ -282,21 +293,23 @@ class ChairsSDHom(data.Dataset):
   def __getitem__(self, index):
     index = index % self.size
 
-    img1 = frame_utils.read_gen(self.image_list[index][0])
-    img2 = frame_utils.read_gen(self.image_list[index][1])
+    img1 = frame_utils.read_gen(self.image_list[index][0]).astype(np.float32)
+    img2 = frame_utils.read_gen(self.image_list[index][1]).astype(np.float32)
 
     flow = frame_utils.read_gen(self.flow_list[index])
     flow = flow[::-1,:,:]
 
     images = [img1, img2]
-    image_size = img1.shape[:2]
-    if self.is_cropped:
-        cropper = StaticRandomCrop(image_size, self.crop_size)
+    if self.transforms is None:
+        image_size = img1.shape[:2]
+        if self.is_cropped:
+            cropper = StaticRandomCrop(image_size, self.crop_size)
+        else:
+            cropper = StaticCenterCrop(image_size, self.render_size)
+        images = list(map(cropper, images))
+        flow = cropper(flow)
     else:
-        cropper = StaticCenterCrop(image_size, self.render_size)
-    images = list(map(cropper, images))
-    flow = cropper(flow)
-
+        images, flow = self.transforms(images, flow)
 
     images = np.array(images).transpose(3,0,1,2)
     flow = flow.transpose(2,0,1)
@@ -310,20 +323,21 @@ class ChairsSDHom(data.Dataset):
     return self.size * self.replicates
 
 class ChairsSDHomTrain(ChairsSDHom):
-    def __init__(self, args, is_cropped = False, root = '', replicates = 1):
-        super(ChairsSDHomTrain, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'train', replicates = replicates)
+    def __init__(self, args, is_cropped = False, root = '', replicates = 1, transforms = None):
+        super(ChairsSDHomTrain, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'train', replicates = replicates, transforms = transforms)
 
 class ChairsSDHomTest(ChairsSDHom):
-    def __init__(self, args, is_cropped = False, root = '', replicates = 1):
-        super(ChairsSDHomTest, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'test', replicates = replicates)
+    def __init__(self, args, is_cropped = False, root = '', replicates = 1, transforms = None):
+        super(ChairsSDHomTest, self).__init__(args, is_cropped = is_cropped, root = root, dstype = 'test', replicates = replicates, transforms = transforms)
 
 class ImagesFromFolder(data.Dataset):
-  def __init__(self, args, is_cropped, root = '/path/to/frames/only/folder', iext = 'png', replicates = 1):
+  def __init__(self, args, is_cropped, root = '/path/to/frames/only/folder', iext = 'png', replicates = 1, transforms = None):
     self.args = args
     self.is_cropped = is_cropped
     self.crop_size = args.crop_size
     self.render_size = args.inference_size
     self.replicates = replicates
+    self.transforms = transforms
 
     images = sorted( glob( join(root, '*.' + iext) ) )
     self.image_list = []
@@ -345,16 +359,19 @@ class ImagesFromFolder(data.Dataset):
   def __getitem__(self, index):
     index = index % self.size
 
-    img1 = frame_utils.read_gen(self.image_list[index][0])
-    img2 = frame_utils.read_gen(self.image_list[index][1])
+    img1 = frame_utils.read_gen(self.image_list[index][0]).astype(np.float32)
+    img2 = frame_utils.read_gen(self.image_list[index][1]).astype(np.float32)
 
     images = [img1, img2]
-    image_size = img1.shape[:2]
-    if self.is_cropped:
-        cropper = StaticRandomCrop(image_size, self.crop_size)
+    if self.transforms is None:
+        image_size = img1.shape[:2]
+        if self.is_cropped:
+            cropper = StaticRandomCrop(image_size, self.crop_size)
+        else:
+            cropper = StaticCenterCrop(image_size, self.render_size)
+        images = list(map(cropper, images))
     else:
-        cropper = StaticCenterCrop(image_size, self.render_size)
-    images = list(map(cropper, images))
+        images, flow = self.transforms(images, flow)
     
     images = np.array(images).transpose(3,0,1,2)
     images = torch.from_numpy(images.astype(np.float32))

@@ -7,14 +7,17 @@ import numpy as np
 
 from networks.resample2d_package.resample2d import Resample2d
 from networks.channelnorm_package.channelnorm import ChannelNorm
+from networks.correlation_package.correlation import Correlation
 
 from networks import FlowNetC
 from networks import FlowNetS
 from networks import FlowNetSD
 from networks import FlowNetFusion
+from networks.PWCNet_PyTorch.PWCNet import PWCNet as PWCNetDef, PWCDCNet as PWCDCNetDef
 
 from networks.submodules import *
 'Parameter count = 162,518,834'
+
 
 class FlowNet2(nn.Module):
 
@@ -493,3 +496,12 @@ class FlowNet2CSS(nn.Module):
 
         return flownets2_flow
 
+
+class PWCNet(PWCNetDef):
+    def __init__(self, args, batchNorm=False, div_flow=20):
+        super(PWCNet, self).__init__(args, batchNorm, div_flow)
+
+
+class PWCDCNet(PWCDCNetDef):
+    def __init__(self, args, batchNorm=False, div_flow=20):
+        super(PWCDCNet, self).__init__(args, batchNorm, div_flow)

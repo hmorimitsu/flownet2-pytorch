@@ -1,3 +1,23 @@
+## Changelog
+
+Code modified from flownet2-pytorch [https://github.com/NVIDIA/flownet2-pytorch](https://github.com/NVIDIA/flownet2-pytorch).
+
+- Adapt flownet2-pytorch to work with PyTorch 1.0.
+- Include PWC-Net model definition from [https://github.com/NVlabs/PWC-Net](https://github.com/NVlabs/PWC-Net).
+- Use PWCDCNet without dilation layers to create PWCNet definition.
+  - PWCDCNet checkpoint can be loaded into PWCNet with apparent reasonable results.
+- Remove inplace operation in PWCDCNet warp function to allow backpropagation and training.
+- Show images of groundtruth, estimated optical flows and error in tensorboard.
+  - Flow to image conversion is done using the code in [https://github.com/georgegach/flow2image](https://github.com/georgegach/flow2image).
+- For more stable visualization, statistics are reported as the mean value over an epoch, rather than the value at the current iteration.
+- Replaced LR scheduler by torch.optim.lr_scheduler.
+- Included training augmentation.
+  - The augmentation code come from [https://github.com/ClementPinard/FlowNetPytorch](https://github.com/ClementPinard/FlowNetPytorch).
+- Training checkpoint store optimizer and scheduler parameters for resuming training later.
+- Add weight and bias decay
+- Add batch normalization to PWC-Net
+
+
 # flownet2-pytorch 
 
 Pytorch implementation of [FlowNet 2.0: Evolution of Optical Flow Estimation with Deep Networks](https://arxiv.org/abs/1612.01925). 
@@ -20,6 +40,10 @@ A batchnorm version for each network is also available.
  - **FlowNet2CSS**
  - **FlowNet2SD**
  - **FlowNet2**
+
+### Additional architectures added in this repo
+- **PWCNet**
+- **PWCDCNet**
 
 ## Custom layers
 
@@ -47,7 +71,7 @@ L1 and L2 losses with multi-scale support are available in [losses.py](./losses.
 ### Python requirements 
 Currently, the code supports python 3
 * numpy 
-* PyTorch ( == 0.4.1, for <= 0.4.0 see branch [python36-PyTorch0.4](https://github.com/NVIDIA/flownet2-pytorch/tree/python36-PyTorch0.4))
+* PyTorch 1.0
 * scipy 
 * scikit-image
 * tensorboardX
@@ -63,6 +87,9 @@ We've included caffe pre-trained models. Should you use these pre-trained weight
 * [FlowNet2-CSS-ft-sd](https://drive.google.com/file/d/1R5xafCIzJCXc8ia4TGfC65irmTNiMg6u/view?usp=sharing)[445MB]
 * [FlowNet2-S](https://drive.google.com/file/d/1V61dZjFomwlynwlYklJHC-TLfdFom3Lg/view?usp=sharing)[148MB]
 * [FlowNet2-SD](https://drive.google.com/file/d/1QW03eyYG_vD-dT-Mx4wopYvtPu_msTKn/view?usp=sharing)[173MB]
+
+### PWC-Net model
+* PWC-DC-Net model can be downloaded from [https://github.com/NVlabs/PWC-Net/tree/master/PyTorch](https://github.com/NVlabs/PWC-Net/tree/master/PyTorch). Be sure to adhere to the [PWC-Net license](https://github.com/NVlabs/PWC-Net/blob/master/PyTorch/LICENSE.md).
     
 ## Inference
     # Example on MPISintel Clean   
