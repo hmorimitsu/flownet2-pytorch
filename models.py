@@ -5,17 +5,31 @@ from torch.nn import init
 import math
 import numpy as np
 
-from networks.resample2d_package.resample2d import Resample2d
-from networks.channelnorm_package.channelnorm import ChannelNorm
-from networks.correlation_package.correlation import Correlation
 
-from networks import FlowNetC
-from networks import FlowNetS
-from networks import FlowNetSD
-from networks import FlowNetFusion
-from networks.PWCNet_PyTorch.PWCNet import PWCNet as PWCNetDef, PWCDCNet as PWCDCNetDef
+try:
+    from networks.resample2d_package.resample2d import Resample2d
+    from networks.channelnorm_package.channelnorm import ChannelNorm
+    from networks.correlation_package.correlation import Correlation
 
-from networks.submodules import *
+    from networks import FlowNetC
+    from networks import FlowNetS
+    from networks import FlowNetSD
+    from networks import FlowNetFusion
+    from networks.PWCNet_PyTorch.PWCNet import PWCNet as PWCNetDef, PWCDCNet as PWCDCNetDef
+
+    from networks.submodules import *
+except:
+    from .networks.resample2d_package.resample2d import Resample2d
+    from .networks.channelnorm_package.channelnorm import ChannelNorm
+    from .networks.correlation_package.correlation import Correlation
+
+    from .networks import FlowNetC
+    from .networks import FlowNetS
+    from .networks import FlowNetSD
+    from .networks import FlowNetFusion
+    from .networks.PWCNet_PyTorch.PWCNet import PWCNet as PWCNetDef, PWCDCNet as PWCDCNetDef
+
+    from .networks.submodules import *
 'Parameter count = 162,518,834'
 
 
